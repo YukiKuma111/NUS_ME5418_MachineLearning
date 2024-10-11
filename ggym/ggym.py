@@ -431,11 +431,16 @@ class Group24env(gym.Env,EzPickle):
             rjd = revoluteJointDef(
                 bodyA = self.hull,
                 bodyB = wheel,
+                localAnchorA = (i*(WIDTH_HULL/(2*SCALE)),-(HEIGHT_HULL/(2*SCALE))),
+                localAnchorB = (0,0),
                 enableMotor = True,
-                maxMotorTorque = 100,
-                motorSpeed = 1,
-                
+                enableLimit = False,
+                maxMotorTorque = MOTORS_TORQUE,
+                motorSpeed = 0,
             )
+            self.wheels.append(wheel)
+            self.joints.append(self.world.CreateJoint(rjd))
+            self.drawlist = self.terrain + self.legs + [self.hull]
 
         # lidar resets
         self.lidar_render = 0
@@ -448,7 +453,10 @@ class Group24env(gym.Env,EzPickle):
                 return fraction
 
         self.lidar = [LidarCallback() for _ in range(10)]
-
+        # render reset
+        if self.render_mode == "human":
+            self.render()
+        return self.step(np.array([0, 0, 0, 0]))[0], {}
     # generate particle
     def _create_particle(self, mass, x, y, ttl):
         p = self.world.CreateDynamicBody(
@@ -475,10 +483,12 @@ class Group24env(gym.Env,EzPickle):
 
     def step(self, action: ActType):
 
+
     def render(self, screen):
 
     # def close pygame
 
 if __name__=="__main__":
+
 
 
