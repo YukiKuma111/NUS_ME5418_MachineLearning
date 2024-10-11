@@ -401,6 +401,9 @@ class Group24env(gym.Env,EzPickle):
         self.game_over = False
         self.reward = 0
 
+        # added by rui 10.11
+        self.scroll = 0.0
+
         # terrain resets
         self._generate_terrain(self.hardcore)
 
@@ -437,6 +440,9 @@ class Group24env(gym.Env,EzPickle):
                 
             )
 
+        # 还没加上10
+        # self.drawlist = self.terrain + self.legs + [self.hull]
+
         # lidar resets
         self.lidar_render = 0
         class LidarCallback(Box2D.b2.rayCastCallback):
@@ -446,8 +452,8 @@ class Group24env(gym.Env,EzPickle):
                 self.p2 = point
                 self.fraction = fraction
                 return fraction
-
-        self.lidar = [LidarCallback() for _ in range(10)]
+        # turn from 10 to 20. modified by rui 10.11
+        self.lidar = [LidarCallback() for _ in range(20)]
 
     # generate particle
     def _create_particle(self, mass, x, y, ttl):
@@ -475,7 +481,176 @@ class Group24env(gym.Env,EzPickle):
 
     def step(self, action: ActType):
 
-    def render(self, screen):
+    def render(self, screen):       # modified by rui 10.11
+        if self.render_mode is None:  # Check the render mode
+            gym.logger.warn(
+                "You are calling render method without specifying any render mode. "
+                "You can specify the render_mode at initialization, "
+                f'e.g. gym("{self.spec.id}", render_mode="rgb_array")'
+            )
+            return
+
+        try:  # Import the pygame library
+            import pygame
+            from pygame import gfxdraw
+        except ImportError:
+            raise DependencyNotInstalled(
+                "pygame is not installed, run `pip install gym[box2d]`"
+            )
+
+        # Initialize the screen and clock
+        if self.screen is None and self.render_mode == "human":
+            pygame.init()
+            pygame.display.init()
+            self.screen = pygame.display.set_mode((VIEWPORT_W, VIEWPORT_H))
+        if self.clock is None:
+            self.clock = pygame.time.Clock()
+
+        # Create a Rendering Surface
+        self.surf = pygame.Surface(
+            (VIEWPORT_W + max(0.0, self.scroll) * SCALE, VIEWPORT_H)
+        )
+        pygame.transform.scale(self.surf, (SCALE, SCALE))
+
+        # Draw a light blue background
+        pygame.draw.polygon(
+            self.surf,
+            color=(215, 215, 255),
+            points=[
+                (self.scroll * SCALE, 0),
+                (self.scroll * SCALE + VIEWPORT_W, 0),
+                (self.scroll * SCALE + VIEWPORT_W, VIEWPORT_H),
+                (self.scroll * SCALE, VIEWPORT_H),
+            ],
+        )
+
+        # Draw the cloud
+        for poly, x1, x2 in self.cloud_poly:
+            if x2 < self.scroll / 2:
+                continue
+            if x1 > self.scroll / 2 + VIEWPORT_W / SCALE:
+                continue
+            pygame.draw.polygon(
+                self.surf,
+                color=(255, 255, 255),
+                points=[
+                    (p[0] * SCALE + self.scroll * SCALE / 2, p[1] * SCALE) for p in poly
+                ],
+            )
+            gfxdraw.aapolygon(
+                self.surf,
+                [(p[0] * SCALE + self.scroll * SCALE / 2, p[1] * SCALE) for p in poly],
+                (255, 255, 255),
+            )
+
+        # Draw the terrain
+        for poly, color in self.terrain_poly:
+            if poly[1][0] < self.scroll:
+                continue
+            if poly[0][0] > self.scroll + VIEWPORT_W / SCALE:
+                continue
+            scaled_poly = []
+            for coord in poly:
+                scaled_poly.append([coord[0] * SCALE, coord[1] * SCALE])
+            pygame.draw.polygon(self.surf, color=color, points=scaled_poly)
+            gfxdraw.aapolygon(self.surf, scaled_poly, color)
+
+        # Plotting LIDAR sensor data
+        self.lidar_render = (self.lidar_render + 1) % 100
+        i = self.lidar_render
+        if i < 2 * len(self.lidar):
+            single_lidar = (
+                self.lidar[i]
+                if i < len(self.lidar)
+                else self.lidar[len(self.lidar) - i - 1]
+            )
+            if hasattr(single_lidar, "p1") and hasattr(single_lidar, "p2"):
+                pygame.draw.line(
+                    self.surf,
+                    color=(255, 0, 0),
+                    start_pos=(single_lidar.p1[0] * SCALE, single_lidar.p1[1] * SCALE),
+                    end_pos=(single_lidar.p2[0] * SCALE, single_lidar.p2[1] * SCALE),
+                    width=1,
+                )
+
+        # Update the color and lifespan of particles
+        for obj in self.particles:
+            obj.ttl -= 0.15
+            obj.color1 = (
+                int(max(0.2, 0.15 + obj.ttl) * 255),
+                int(max(0.2, 0.5 * obj.ttl) * 255),
+                int(max(0.2, 0.5 * obj.ttl) * 255),
+            )
+            obj.color2 = (
+                int(max(0.2, 0.15 + obj.ttl) * 255),
+                int(max(0.2, 0.5 * obj.ttl) * 255),
+                int(max(0.2, 0.5 * obj.ttl) * 255),
+            )
+        self._clean_particles(False)
+
+        # Draw robots, particles and other objects
+        for obj in self.drawlist:
+            for f in obj.fixtures:
+                trans = f.body.transform
+                if type(f.shape) is circleShape:
+                    pygame.draw.circle(
+                        self.surf,
+                        color=obj.color1,
+                        center=trans * f.shape.pos * SCALE,
+                        radius=f.shape.radius * SCALE,
+                    )
+                    pygame.draw.circle(
+                        self.surf,
+                        color=obj.color2,
+                        center=trans * f.shape.pos * SCALE,
+                        radius=f.shape.radius * SCALE,
+                    )
+                else:
+                    path = [trans * v * SCALE for v in f.shape.vertices]
+                    if len(path) > 2:
+                        pygame.draw.polygon(self.surf, color=obj.color1, points=path)
+                        gfxdraw.aapolygon(self.surf, path, obj.color1)
+                        path.append(path[0])
+                        pygame.draw.polygon(self.surf, color=obj.color2, points=path, width=1)
+                        gfxdraw.aapolygon(self.surf, path, obj.color2)
+                    else:
+                        pygame.draw.aaline(
+                            self.surf,
+                            start_pos=path[0],
+                            end_pos=path[1],
+                            color=obj.color1,
+                        )
+
+        # draw target flag
+        flagy1 = TERRAIN_HEIGHT * SCALE
+        flagy2 = flagy1 + 50
+        x = TERRAIN_STEP * 3 * SCALE
+        pygame.draw.aaline(
+            self.surf, color=(0, 0, 0), start_pos=(x, flagy1), end_pos=(x, flagy2)
+        )
+        f = [
+            (x, flagy2),
+            (x, flagy2 - 10),
+            (x + 25, flagy2 - 5),
+        ]
+        pygame.draw.polygon(self.surf, color=(230, 51, 0), points=f)
+        pygame.draw.lines(
+            self.surf, color=(0, 0, 0), points=f + [f[0]], width=1, closed=False
+        )
+
+        # Flip and display the image
+        self.surf = pygame.transform.flip(self.surf, False, True)
+        if self.render_mode == "human":
+            assert self.screen is not None
+            self.screen.blit(self.surf, (-self.scroll * SCALE, 0))
+            pygame.event.pump()
+            self.clock.tick(self.metadata["render_fps"])
+            pygame.display.flip()
+        elif self.render_mode == "rgb_array":
+            return np.transpose(
+                np.array(pygame.surfarray.pixels3d(self.surf)), axes=(1, 0, 2)
+            )[:, -VIEWPORT_W:]
+
 
     # def close pygame
 
