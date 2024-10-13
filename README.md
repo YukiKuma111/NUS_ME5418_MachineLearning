@@ -24,7 +24,6 @@
     1. 加入了zewen写的 _create_particle & _clean_particles
     2. 复制了rui写的render
     - 目前可以跑通，但是没有particle的显示（或许和没有用到_create_particle有关）
-    3. ε＝ε＝ε＝(#>д<)ﾉ
 
     ***
 
@@ -32,6 +31,21 @@
 
     1. 复制了zewen的 self.fd_triangle
     2. 修改了激光雷达的数量10->20 (obervation 10 -> 20)
+
+    ***
+
+- _destory部分
+
+    1. 参考zewen的修改进行了更新
+
+- _generate_terrain部分
+
+    1. 删除PIT陷阱
+    2. 修改 STUMP -> TOWER
+    3. 保留了stairs
+    4. 增加了slope
+    5. 调高了step的间距 1 -> 2
+    6. 增加了hole
 
 - step部分
 

@@ -364,21 +364,21 @@ class BipedalWalker(gym.Env, EzPickle):
         self.terrain = []
         self.world.DestroyBody(self.hull)
         self.hull = None
-        # command and add by zewen
-        # for leg in self.legs:
-        #     self.world.DestroyBody(leg)
-        # self.legs = []
-        # self.joints = []
-        for wheel in self.wheels:
-            self.world.DestroyBody(wheel)
-        for joint in self.joints:
-            self.world.DestroyBody(joint)
+        # added by zewen
+        for lander in self.lander:
+            self.world.DestroyBody(lander)
+        self.lander = []
+        self.lander_joints = []
+        for leg in self.legs:
+            self.world.DestroyBody(leg)
+        self.legs = []
+        self.joints = []
 
         self._clean_particles(True)
 
     # terrain generation
     def _generate_terrain(self, hardcore):
-        GRASS, STUMP, STAIRS, PIT, SLOPE, _STATES_ = range(6)   # stair 可以删掉
+        GRASS, TOWER, STAIRS, SLOPE, HOLE, _STATES_ = range(6)
         state = GRASS
         velocity = 0.0
         y = TERRAIN_HEIGHT
@@ -390,6 +390,7 @@ class BipedalWalker(gym.Env, EzPickle):
 
         stair_steps, stair_width, stair_height = 0, 0, 0
         original_y = 0
+
         for i in range(TERRAIN_LENGTH):
             x = i * TERRAIN_STEP
             self.terrain_x.append(x)
@@ -400,48 +401,27 @@ class BipedalWalker(gym.Env, EzPickle):
                     velocity += self.np_random.uniform(-1, 1) / SCALE  # 1
                 y += velocity
 
-            elif state == PIT and oneshot:
-                counter = self.np_random.integers(3, 5)
+            # modified by ziyue
+            elif state == TOWER and oneshot:
+                robot_width = (HALF_WIDTH_HULL + WHEEL_RADIUS) * 2 / SCALE + LEG_H * 2
+                robot_height = ((HALF_HEIGHT_HULL * 2 + WHEEL_RADIUS) / SCALE + LEG_H)
+                counterx = self.np_random.integers(robot_width, robot_width * 2.5)
+                countery = self.np_random.integers(VIEWPORT_H / SCALE - robot_height * 2 + HALF_HEIGHT_HULL / SCALE, VIEWPORT_H / SCALE - robot_height)
                 poly = [
                     (x, y),
-                    (x + TERRAIN_STEP, y),
-                    (x + TERRAIN_STEP, y - 4 * TERRAIN_STEP),
-                    (x, y - 4 * TERRAIN_STEP),
+                    (x + counterx * TERRAIN_STEP, y),
+                    (x + counterx * TERRAIN_STEP, y + countery * TERRAIN_STEP),
+                    (x, y + countery * TERRAIN_STEP),
                 ]
                 self.fd_polygon.shape.vertices = poly
                 t = self.world.CreateStaticBody(fixtures=self.fd_polygon)
                 t.color1, t.color2 = (255, 255, 255), (153, 153, 153)
                 self.terrain.append(t)
-
-                self.fd_polygon.shape.vertices = [
-                    (p[0] + TERRAIN_STEP * counter, p[1]) for p in poly
-                ]
-                t = self.world.CreateStaticBody(fixtures=self.fd_polygon)
-                t.color1, t.color2 = (255, 255, 255), (153, 153, 153)
-                self.terrain.append(t)
-                counter += 2
-                original_y = y
-
-            elif state == PIT and not oneshot:
-                y = original_y
-                if counter > 1:
-                    y -= 4 * TERRAIN_STEP
-
-            elif state == STUMP and oneshot:
-                counter = self.np_random.integers(1, 3)
-                poly = [
-                    (x, y),
-                    (x + counter * TERRAIN_STEP, y),
-                    (x + counter * TERRAIN_STEP, y + counter * TERRAIN_STEP),
-                    (x, y + counter * TERRAIN_STEP),
-                ]
-                self.fd_polygon.shape.vertices = poly
-                t = self.world.CreateStaticBody(fixtures=self.fd_polygon)
-                t.color1, t.color2 = (255, 255, 255), (153, 153, 153)
-                self.terrain.append(t)
+                counter = counterx
 
             elif state == STAIRS and oneshot:
-                stair_height = +1 if self.np_random.random() > 0.5 else -1
+                # stair_height = +1 if self.np_random.random() > 0.5 else -1
+                stair_height = +2 if self.np_random.random() > 0.5 else -2
                 stair_width = self.np_random.integers(4, 5)
                 stair_steps = self.np_random.integers(3, 5)
                 original_y = y
@@ -475,32 +455,41 @@ class BipedalWalker(gym.Env, EzPickle):
                 n = s / stair_width
                 y = original_y + (n * stair_height) * TERRAIN_STEP
 
-
-            # add by zewen
+            # added by ziyue
             elif state == SLOPE and oneshot:
-                counter = self.np_random.integers(1, 3)
-                counter = 1
-                y = original_y
-                up_or_down = self.np_random.integers(0,1)
-                if up_or_down:
-                    # up
-                    poly = [
-                        (x, y),
-                        (x + counter * TERRAIN_STEP, y),
-                        (x + counter * TERRAIN_STEP, y + counter * TERRAIN_STEP),
-                    ]
-                else:
-                    # down
-                    poly = [
-                        (x, y),
-                        (x, y + counter * TERRAIN_STEP),
-                        (x + counter * TERRAIN_STEP,y),
-                    ]
-                self.fd_triangle.shape.vertices = poly
-                t = self.world.CreateStaticBody(fixtures=self.fd_triangle)
+                robot_width = (HALF_WIDTH_HULL + WHEEL_RADIUS) * 2 / SCALE + LEG_H * 2
+                slope_width = self.np_random.integers(robot_width, robot_width * 2.5)
+                slope_angle = self.np_random.integers(10, 35)
+                slope_height = slope_width * np.tan(np.deg2rad(slope_angle))
+                poly = [
+                    (x, y),
+                    (x + slope_width * TERRAIN_STEP, y + slope_height * TERRAIN_STEP),
+                    (x + (slope_width + robot_width * 1.5) * TERRAIN_STEP, y + slope_height * TERRAIN_STEP),
+                    (x + (2 * slope_width + robot_width * 1.5) * TERRAIN_STEP, y),
+                ]
+                self.fd_polygon.shape.vertices = poly
+                t = self.world.CreateStaticBody(fixtures=self.fd_polygon)
                 t.color1, t.color2 = (255, 255, 255), (153, 153, 153)
                 self.terrain.append(t)
+                counter = 2 * slope_width + robot_width * 1.5
 
+            # added by ziyue
+            elif state == HOLE and oneshot:
+                robot_width = (HALF_WIDTH_HULL + WHEEL_RADIUS) * 2 / SCALE + LEG_H * 2
+                robot_height = ((HALF_HEIGHT_HULL * 2 + WHEEL_RADIUS) / SCALE + LEG_H)
+                counter = self.np_random.integers(robot_width, 3 * robot_width)
+                hole_height = self.np_random.integers((VIEWPORT_H / SCALE - y) - robot_height, (VIEWPORT_H / SCALE - y) - robot_height / 3)
+                poly = [
+                    (x, VIEWPORT_H / SCALE),
+                    (x + counter * TERRAIN_STEP, VIEWPORT_H / SCALE),
+                    (x + counter * TERRAIN_STEP, VIEWPORT_H / SCALE - hole_height),
+                    (x, VIEWPORT_H / SCALE - hole_height),
+                ]
+                self.fd_polygon.shape.vertices = poly
+                t = self.world.CreateStaticBody(fixtures=self.fd_polygon)
+                t.color1, t.color2 = (255, 255, 255), (153, 153, 153)
+                self.terrain.append(t)
+            
             oneshot = False
             self.terrain_y.append(y)
             counter -= 1
