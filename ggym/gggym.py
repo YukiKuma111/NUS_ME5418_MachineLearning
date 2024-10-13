@@ -25,6 +25,8 @@ try:
         polygonShape,
         revoluteJointDef,
         rayCastCallback,
+        weldJointDef,
+        wheelJointDef,
     )
 except ImportError:
     raise DependencyNotInstalled("box2d is not installed, run `pip install gym[box2d]`")
@@ -44,8 +46,19 @@ SCALE = 30.0
 # physical parameters for the robot
 HEIGHT_HULL = +4
 WIDTH_HULL = +15
-HULL_POLY = [(-WIDTH_HULL, +HEIGHT_HULL), (+WIDTH_HULL, +HEIGHT_HULL), (+WIDTH_HULL, -HEIGHT_HULL), (-WIDTH_HULL, -HEIGHT_HULL)]
+
+HALF_HEIGHT_HULL = 10
+HALF_WIDTH_HULL = 40
+HALF_HEIGHT_LANDER = 8
+HALF_WIDTH_LANDER = 20
+WHEEL_RADIUS = 34 / 2   # half of the LEG_H
+
+HULL_POLY = [(-HALF_WIDTH_HULL, HALF_HEIGHT_HULL), (HALF_WIDTH_HULL, HALF_HEIGHT_HULL), (HALF_WIDTH_HULL, -HALF_HEIGHT_HULL), (-HALF_WIDTH_HULL, -HALF_HEIGHT_HULL)]
+LANDER_POLY = [(-HALF_WIDTH_LANDER, HALF_HEIGHT_LANDER), (HALF_WIDTH_LANDER, HALF_HEIGHT_LANDER), (HALF_WIDTH_LANDER, -HALF_HEIGHT_LANDER), (-HALF_WIDTH_LANDER, -HALF_HEIGHT_LANDER)]
+
 wheel_radius = 2
+LEG_DOWN = -8 / SCALE
+LEG_W, LEG_H = 8 / SCALE, 34 / SCALE
 
 # engine and motor
 MAIN_ENGINE_POWER = 13.0
@@ -56,6 +69,7 @@ SIDE_ENGINE_AWAY = 12.0
 
 MOTORS_TORQUE = 80
 SPEED_HIP = 4
+SPEED_KNEE = 6
 
 # terrain parameters
 TERRAIN_STEP = 14 / SCALE
@@ -80,12 +94,29 @@ HULL_FD = fixtureDef(
 )  # 0.99 bouncy
 
 WHEEL_FD = fixtureDef(
-    shape=circleShape(radius=wheel_radius / SCALE, pos=(0, 0)),
+    shape=circleShape(radius=WHEEL_RADIUS / SCALE, pos=(0, 0)),
     density=1.0,
     restitution=0.0,
     categoryBits=0x0020,
     maskBits=0x001,
 )
+
+LEG_FD = fixtureDef(
+    shape=polygonShape(box=(LEG_W / 2, LEG_H / 2)),
+    density=1.0,
+    restitution=0.0,
+    categoryBits=0x0020,
+    maskBits=0x001,
+)
+
+LANDER_FD = fixtureDef(
+    shape=polygonShape(vertices=[(x / SCALE, y / SCALE) for x, y in LANDER_POLY]),
+    density=1.0,
+    friction=0.1,
+    categoryBits=0x0020,
+    maskBits=0x001,  # collide only with ground
+    restitution=0.0,
+)  # 0.99 bouncy
 
 
 # physical contact
@@ -100,14 +131,14 @@ class ContactDetector(contactListener):
             or self.env.hull == contact.fixtureB.body
         ):
             self.env.game_over = True
-        for wheel in [self.env.wheels[0],self.env.wheels[1]]:
-            if wheel in [contact.fixtureA.body, contact.fixtureB.body]:
-                wheel.ground_contact = True
+        for leg in [self.env.legs[1], self.env.legs[3]]:
+            if leg in [contact.fixtureA.body, contact.fixtureB.body]:
+                leg.ground_contact = True
 
     def EndContact(self, contact):
-        for wheel in [self.env.wheels[0],self.env.wheels[1]]:
-            if wheel in [contact.fixtureA.body, contact.fixtureB.body]:
-                wheel.ground_contact = False
+        for leg in [self.env.legs[1], self.env.legs[3]]:
+            if leg in [contact.fixtureA.body, contact.fixtureB.body]:
+                leg.ground_contact = False
 
 
 class Group24env(gym.Env,EzPickle):
@@ -122,8 +153,8 @@ class Group24env(gym.Env,EzPickle):
             gravity: float = -9.8,
             enable_wind: bool = False,
             wind_power: float = 15.0,
-            turbulence_power: float = 1.5, # 0
-            hardcore:bool = False,
+            turbulence_power: float = 0, # 0
+            hardcore:bool = True,
     ):
         EzPickle.__init__(
             self,
@@ -141,6 +172,7 @@ class Group24env(gym.Env,EzPickle):
         assert (
                 -9.81 <= gravity < 0.0
         ), f"gravity (current value: {gravity}) must be between -9.81 and 0"
+
         self.gravity = gravity
         self.continuous = continuous
         self.world = Box2D.b2World()
@@ -192,11 +224,11 @@ class Group24env(gym.Env,EzPickle):
 
         # action space
         self.action_space = spaces.Box(
-            # two for engines, one for wheels
+            # two for engines, one for wheels, one for legs
             # Main engine: -1..0 off, 0..+1 throttle from 50% to 100% power. Engine can't work with less than 50% power.
             # Left-right:  -1.0..-0.5 fire left engine, +0.5..+1.0 fire right engine, -0.5..0.5 off
             np.array([-1, -1, -1, -1]).astype(np.float32),
-            np.array([1, 1, 1, 1]).astype(np.float32),
+            np.array([1, 1, 1, 0]).astype(np.float32),
         )
         # observation space
         # we have a hull(main body), two wheels, three engines, ground contact
@@ -209,8 +241,9 @@ class Group24env(gym.Env,EzPickle):
             -1.5, # minimum normalized x-position of the hull
             -1.5, # minimum normalized y-position of the hull
 
-            # the parameters of the wheels
+            # the parameters of the wheels and legs
             -5.0, # minimum angular velocity of the wheels' joints
+            -math.pi/2, # minimum angle position of the leg
 
             # the ground contact listener
             -0.0, # minimum ground contact indicator for the left wheel (0 = no contact)
@@ -228,6 +261,7 @@ class Group24env(gym.Env,EzPickle):
 
             # the parameters of the wheels
             5.0, # maximum angular velocity of the wheels' joints
+            0,  # maximum angle position of the leg
 
             # the ground contact listener
             1.0, # maximum ground contact indicator for the left wheel (1 = contact)
@@ -235,6 +269,8 @@ class Group24env(gym.Env,EzPickle):
             ]+ [1.0] * 10).astype(np.float32)
 
         self.observation_space = spaces.Box(low=low, high=high, dtype=np.float32)
+
+
         # reward init
         self.game_over = None
         self.prev_shaping = None
@@ -258,10 +294,16 @@ class Group24env(gym.Env,EzPickle):
 
         self.world.DestroyBody(self.hull)
         self.hull = None
-        for wheel in self.wheels:
-            self.world.DestroyBody(wheel)
-        for joint in self.joints:
-            self.world.DestroyBody(joint)
+
+        for lander in self.lander:
+            self.world.DestroyBody(lander)
+        self.lander = []
+        self.lander_joints = []
+
+        for leg in self.legs:
+            self.world.DestroyBody(leg)
+        self.legs = []
+        self.joints = []
 
         self._clean_particles(True)
 
@@ -384,6 +426,26 @@ class Group24env(gym.Env,EzPickle):
             self.terrain_poly.append((poly, color))
         self.terrain.reverse()
 
+    def _generate_clouds(self):
+        # Sorry for the clouds, couldn't resist
+        self.cloud_poly = []
+        for i in range(TERRAIN_LENGTH // 20):
+            x = self.np_random.uniform(0, TERRAIN_LENGTH) * TERRAIN_STEP
+            y = VIEWPORT_H / SCALE * 3 / 4
+            poly = [
+                (
+                    x
+                    + 15 * TERRAIN_STEP * math.sin(3.14 * 2 * a / 5)
+                    + self.np_random.uniform(0, 5 * TERRAIN_STEP),
+                    y
+                    + 5 * TERRAIN_STEP * math.cos(3.14 * 2 * a / 5)
+                    + self.np_random.uniform(0, 5 * TERRAIN_STEP),
+                )
+                for a in range(5)
+            ]
+            x1 = min(p[0] for p in poly)
+            x2 = max(p[0] for p in poly)
+            self.cloud_poly.append((poly, x1, x2))
 
     def reset(
             self,
@@ -401,53 +463,101 @@ class Group24env(gym.Env,EzPickle):
         # system reset
         self.game_over = False
         self.scroll = 0
+        self.prev_shaping = None
 
         # terrain resets
         self._generate_terrain(self.hardcore)
-
+        # cloud reset
+        self._generate_clouds()
 
         # robot resets
-        self.prev_shaping = None
         init_x = TERRAIN_STEP * TERRAIN_STARTPAD / 2
-        init_y = TERRAIN_HEIGHT + 2 * wheel_radius
+        init_y = TERRAIN_HEIGHT + 2 * LEG_H
         self.hull = self.world.CreateDynamicBody(
             position=(init_x, init_y), fixtures=HULL_FD
         )
         self.hull.color1 = (127, 51, 229)
         self.hull.color2 = (76, 76, 127)
+
         # initial force to wake the robot up
         self.hull.ApplyForceToCenter(
             (self.np_random.uniform(0, INITIAL_RANDOM), 0), True
         )
 
-        self.wheels:List[Box2D.b2Body] = []
-        self.joints:List[Box2D.b2RevoluteJoint] = []
+        self.lander:List[Box2D.b2Body] = []
+        self.lander_joints:List[Box2D.b2WeldJoint] = []
+        lander = self.world.CreateDynamicBody(
+            position=(init_x, init_y - (HALF_HEIGHT_HULL - HALF_HEIGHT_LANDER) / SCALE), fixtures=LANDER_FD
+        )
+        lander.color1 = (98, 149, 132)
+        lander.color2 = (36, 54, 66)
+        weldjd = weldJointDef(
+            bodyA=self.hull,
+            bodyB=lander,
+            localAnchorA=(0, -(HALF_HEIGHT_HULL) / SCALE),
+            localAnchorB=(0, (HALF_HEIGHT_LANDER / SCALE)),
+            referenceAngle=0.0,
+            frequencyHz=0.0,
+            dampingRatio=0.0
+        )
+        lander.ground_contact = False
+        self.lander.append(lander)
+        self.lander_joints.append(self.world.CreateJoint(weldjd))
 
+
+        self.legs:List[Box2D.b2Body] = []
+        self.joints:List[Box2D.b2RevoluteJoint] = []
         for i in [-1,1]:
+            leg = self.world.CreateDynamicBody(
+                position=(init_x + i * (HALF_WIDTH_HULL / SCALE), init_y - LEG_H / 2 - LEG_DOWN),
+                angle=(i * 0.05),
+                fixtures=LEG_FD,
+            )
+            leg.color1 = (153 - i * 25, 76 - i * 25, 127 - i * 25)
+            leg.color2 = (102 - i * 25, 51 - i * 25, 76 - i * 25)
+            rjd = revoluteJointDef(
+                bodyA = self.hull,
+                bodyB = leg,
+                localAnchorA=(i * (HALF_WIDTH_HULL / SCALE), LEG_DOWN),
+                localAnchorB = (0,LEG_H / 2),
+                enableMotor = True,
+                enableLimit = True,
+                maxMotorTorque = MOTORS_TORQUE,
+                motorSpeed = i, # the direction of the rotation
+                upperAngle = 1.57,
+                lowerAngle = -1.57
+            )
+            self.legs.append(leg)
+            self.joints.append(self.world.CreateJoint(rjd))
+
             wheel = self.world.CreateDynamicBody(
-                position = ((init_x+i*(WIDTH_HULL/(2*SCALE))),(init_y - (HEIGHT_HULL/(2*SCALE))-(wheel_radius/SCALE))),
-                fixtures = WHEEL_FD,
+                position=(init_x + i * (HALF_WIDTH_HULL / SCALE), init_y - WHEEL_RADIUS / SCALE - LEG_DOWN),
+                angle=(i * 0.05),
+                fixtures=WHEEL_FD,
             )
             wheel.color1 = (153 - i * 25, 76 - i * 25, 127 - i * 25)
             wheel.color2 = (102 - i * 25, 51 - i * 25, 76 - i * 25)
+            wheeljd = wheelJointDef(
+                bodyA=leg,
+                bodyB=wheel,
+                localAnchorA=(0, -LEG_H / 2),
+                localAnchorB=(0, 0),
+                # localAxisA=(1, 0),  # horizontal slide
+                enableMotor=True,
+                maxMotorTorque=MOTORS_TORQUE,
+                motorSpeed=-1, # clockwise rotation, robot moves forwards
+                frequencyHz=4.0,
+                dampingRatio=0.7,
+            )  # frequencyHz & dampingRatio 可能要调整
             wheel.ground_contact = False
-            rjd = revoluteJointDef(
-                bodyA = self.hull,
-                bodyB = wheel,
-                localAnchorA = (i*(WIDTH_HULL/(2*SCALE)),-(HEIGHT_HULL/(2*SCALE))),
-                localAnchorB = (0,0),
-                enableMotor = True,
-                enableLimit = False,
-                maxMotorTorque = MOTORS_TORQUE,
-                motorSpeed = 0,
-            )
-            self.wheels.append(wheel)
-            self.joints.append(self.world.CreateJoint(rjd))
+            self.legs.append(wheel)
+            self.joints.append(self.world.CreateJoint(wheeljd))
 
-        self.drawlist = self.terrain + self.wheels + [self.hull]
+        self.drawlist = self.terrain + self.legs + [self.hull] + self.lander
 
         # lidar resets
         self.lidar_render = 0
+
         class LidarCallback(rayCastCallback):
             def ReportFixture(self, fixture, point, normal, fraction):
                 if (fixture.filterData.categoryBits & 1) == 0:
@@ -457,10 +567,12 @@ class Group24env(gym.Env,EzPickle):
                 return fraction
 
         self.lidar = [LidarCallback() for _ in range(10)]
+
         # render reset
         if self.render_mode == "human":
             self.render()
         return self.step(np.array([0, 0, 0, 0]))[0], {}
+
     # generate particle
     def _create_particle(self, mass, x, y, ttl):
         p = self.world.CreateDynamicBody(
@@ -487,11 +599,11 @@ class Group24env(gym.Env,EzPickle):
 
     def step(self, action): # the action matches with action_space
         # ensure the robot was created successfully in reset()
-        assert self.hull is not None
+        assert self.hull and self.lander is not None
 
         # winding and turbulence simulation
         if self.enable_wind and not (
-                self.wheels[0].ground_contact or self.wheels[1].ground_contact
+                self.legs[1].ground_contact or self.legs[3].ground_contact
         ):
             wind_mag = (
                 math.tanh(
@@ -601,17 +713,25 @@ class Group24env(gym.Env,EzPickle):
             )
 
         # wheel control
-        self.joints[0].motorSpeed = float(SPEED_HIP * np.sign(action[2]))
-        self.joints[0].maxMotorTorque = float(
-            MOTORS_TORQUE * np.clip(np.abs(action[2]), 0, 1)
+        self.joints[1].motorSpeed = float(SPEED_KNEE * np.sign(action[2]))
+        self.joints[1].maxMotorTorque = float(
+            MOTORS_TORQUE * np.clip(np.abs(action[1]), 0, 1)
         )
 
-        self.joints[1].motorSpeed = float(SPEED_HIP * np.sign(action[2]))
-        self.joints[1].maxMotorTorque = float(
-            MOTORS_TORQUE * np.clip(np.abs(action[2]), 0, 1)
+        self.joints[3].motorSpeed = float(SPEED_KNEE * np.sign(action[2]))
+        self.joints[3].maxMotorTorque = float(
+            MOTORS_TORQUE * np.clip(np.abs(action[1]), 0, 1)
         )
         # leg control
+        self.joints[0].motorSpeed = float(SPEED_HIP * np.sign(action[3]))
+        self.joints[0].maxMotorTorque = float(
+            MOTORS_TORQUE * np.clip(np.abs(action[3]), 0, 1)
+        )
 
+        self.joints[2].moterSpeed = float(SPEED_HIP * np.sign(action[3]))
+        self.joints[2].maxMotorTorque = float(
+            MOTORS_TORQUE * np.clip(np.abs(action[3]), 0, 1)
+        )
         # lidar
         pos = self.hull.position
         vel = self.hull.linearVelocity
@@ -641,10 +761,10 @@ class Group24env(gym.Env,EzPickle):
             # wheels' speed and rotation direction
             self.joints[0].motorSpeed,
             # the angle of the legs
-
+            self.joints[1].angle,
             # wheels ground contact
-            1.0 if self.wheels[0].ground_contact else 0.0,
-            1.0 if self.wheels[1].ground_contact else 0.0,
+            1.0 if self.legs[1].ground_contact else 0.0,
+            1.0 if self.legs[3].ground_contact else 0.0,
         ]
         # add the lidar readings in state
         state += [l.fraction for l in self.lidar]
@@ -654,19 +774,19 @@ class Group24env(gym.Env,EzPickle):
         shaping = (
                 130 * pos[0] / SCALE
         )  # moving forward is a way to receive reward (normalized to get 300 on completion)
-        # when flying, the robot should be balance as soon as possible
-        if self.wheels[0].ground_contact == 0 and self.wheels[1].ground_contact == 0:
+        # when flying, the robot should be balanced as soon as possible
+        if self.joints[1].ground_contact == 0 and self.joints[3].ground_contact == 0:
             if np.abs(state[0]) <= 1.57 / 3:
                 shaping += (
-                        + 10 * state[7]
                         + 10 * state[8]
+                        + 10 * state[9]
                         + 5 * (1.57 / 3 - np.abs(state[0]))
                 )
             else:
                 # unbalance control
                 shaping += (
-                        + 10 * state[7]
                         + 10 * state[8]
+                        + 10 * state[9]
                         - 5 * (np.abs(state[0])-1.57/3)
                 )
         else:
@@ -699,6 +819,7 @@ class Group24env(gym.Env,EzPickle):
         return np.array(state, dtype=np.float32), reward, terminated, False, {}
 
     def render(self, screen):
+
 
     # def close pygame
 
