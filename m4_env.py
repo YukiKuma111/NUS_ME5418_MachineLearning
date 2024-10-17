@@ -113,7 +113,7 @@ class ContactDetector(contactListener):
         for leg in [self.env.legs[1], self.env.legs[3]]:
             if leg in [contact.fixtureA.body, contact.fixtureB.body]:
                 leg.ground_contact = True
-        for lander in [self.env.lander]:
+        for lander in [self.env.lander[0]]:
             if lander in [contact.fixtureA.body, contact.fixtureB.body]:
                 lander.ground_contact = True
 
@@ -123,7 +123,7 @@ class ContactDetector(contactListener):
                 leg.ground_contact = False
         for lander in [self.env.lander]:
             if lander in [contact.fixtureA.body, contact.fixtureB.body]:
-                lander.ground_contact = True
+                lander.ground_contact = False
 
 
 class BipedalWalker(gym.Env, EzPickle):
@@ -276,48 +276,35 @@ class BipedalWalker(gym.Env, EzPickle):
         self.prev_shaping = None
         self.particles = []
 
-        # observation space (modify by zewen) (ziyue commit: 之后要和state匹配)
-        # we have a hull(main body), two wheels, three engines, ground contact
+        # observation space (v1: modify by zewen) (v2: modify by ziyue, not sure horizontal position and vertical position are needed, and need (-99999, 99999))
+        # hull: angle, angular velocityhorizontal speed, horizontal speed, vertical speed, horizontal position, vertical position
+        # two legs: angle, joints angular speed
+        # two wheels: joints angular speed, contact with ground
+        # lander: contact with ground
+        # lidar: 20 rangefinder measurements
         low = np.array([
-            # the parameters of the hull
-            -math.pi, # minimum angular (orientation) of the robot
-            -5.0, # minimum x-direction velocity the hull
-            -5.0, # minimum y-direction velocity the hull
-            -5.0, # minimum angular velocity of the hull
-            -1.5, # minimum normalized x-position of the hull
-            -1.5, # minimum normalized y-position of the hull
-
-            # the parameters of the wheels
-            -5.0, # minimum angular velocity of the wheels' joints
-
-            # the ground contact listener
-            -0.0, # minimum ground contact indicator for the left wheel (0 = no contact)
-            -0.0 # minimum ground contact indicator for the right wheel (0 = no contact)
+            -math.pi, -5.0, -5.0, -5.0, -99999, -99999,
+            -math.pi, -5.0,
+            -5.0, 0,
+            -math.pi, -5.0,
+            -5.0, 0,
+            0
             ]+ [-1.0] * 20).astype(np.float32)
 
         high = np.array([
-            # the parameters of the hull
-            math.pi, # maximum angular (orientation) of the robot
-            5.0, # maximum x-direction velocity the hull
-            5.0, # maximum y-direction velocity the hull
-            5.0, # maximum angular velocity of the hull
-            1.5, # maximum normalized x-position of the hull
-            1.5, # maximum normalized y-position of the hull
-
-            # the parameters of the wheels
-            5.0, # maximum angular velocity of the wheels' joints
-
-            # the ground contact listener
-            1.0, # maximum ground contact indicator for the left wheel (1 = contact)
-            1.0 # maximum ground contact indicator for the right wheel (1 = contact)
+            math.pi, 5.0, 5.0, 5.0, 99999, 99999,
+            math.pi, 5.0,
+            5.0, 1,
+            math.pi, 5.0,
+            5.0, 1,
+            1
             ]+ [1.0] * 20).astype(np.float32)
-        # action space (modify by zewen)
+        
+        # action space (v1: modify by zewen) (v2: modify by ziyue)
+        # leg joint motor speed, front wheel motor speed, back wheel motor speed
         self.action_space = spaces.Box(
-            # two for engines, one for wheels
-            # Main engine: -1..0 off, 0..+1 throttle from 50% to 100% power. Engine can't work with less than 50% power.
-            # Left-right:  -1.0..-0.5 fire left engine, +0.5..+1.0 fire right engine, -0.5..0.5 off
             np.array([-1, -1, -1]).astype(np.float32),
-            np.array([1, -1, 1]).astype(np.float32),
+            np.array([1, 1, 1]).astype(np.float32),
         )
         self.observation_space = spaces.Box(low, high)
 
@@ -708,13 +695,21 @@ class BipedalWalker(gym.Env, EzPickle):
             self.joints[1].maxMotorTorque = float(
                 MOTORS_TORQUE * np.clip(np.abs(action[1]), 0, 1)
             )
-            self.joints[2].motorSpeed = float(SPEED_HIP * np.sign(action[2]))
+            # self.joints[2].motorSpeed = float(SPEED_HIP * np.sign(action[2]))
+            # self.joints[2].maxMotorTorque = float(
+            #     MOTORS_TORQUE * np.clip(np.abs(action[2]), 0, 1)
+            # )
+            self.joints[2].motorSpeed = float(SPEED_HIP * np.sign(action[0]) * (-1))
             self.joints[2].maxMotorTorque = float(
-                MOTORS_TORQUE * np.clip(np.abs(action[2]), 0, 1)
+                MOTORS_TORQUE * np.clip(np.abs(action[0]), 0, 1)
             )
-            self.joints[3].motorSpeed = float(SPEED_KNEE * np.sign(action[3]))
+            # self.joints[3].motorSpeed = float(SPEED_KNEE * np.sign(action[3]))
+            # self.joints[3].maxMotorTorque = float(
+            #     MOTORS_TORQUE * np.clip(np.abs(action[3]), 0, 1)
+            # )
+            self.joints[3].motorSpeed = float(SPEED_KNEE * np.sign(action[2]))
             self.joints[3].maxMotorTorque = float(
-                MOTORS_TORQUE * np.clip(np.abs(action[3]), 0, 1)
+                MOTORS_TORQUE * np.clip(np.abs(action[2]), 0, 1)
             )
 
         self.world.Step(1.0 / FPS, 6 * 30, 2 * 30)
@@ -736,20 +731,21 @@ class BipedalWalker(gym.Env, EzPickle):
             2.0 * self.hull.angularVelocity / FPS,
             0.3 * vel.x * (VIEWPORT_W / SCALE) / FPS,  # Normalized to get -1..1 range
             0.3 * vel.y * (VIEWPORT_H / SCALE) / FPS,
+            0.3 * pos.x * (VIEWPORT_W / SCALE) / FPS,  # Normalized to get -1..1 range
+            0.3 * pos.y * (VIEWPORT_H / SCALE) / FPS,
             self.joints[0].angle,
             # This will give 1.1 on high up, but it's still OK (and there should be spikes on hiting the ground, that's normal too)
             self.joints[0].speed / SPEED_HIP,
-            self.joints[1].angle + 1.0,
             self.joints[1].speed / SPEED_KNEE,
             1.0 if self.legs[1].ground_contact else 0.0,
             self.joints[2].angle,
             self.joints[2].speed / SPEED_HIP,
-            self.joints[3].angle + 1.0,
             self.joints[3].speed / SPEED_KNEE,
             1.0 if self.legs[3].ground_contact else 0.0,
+            1.0 if self.lander[0].ground_contact else 0.0,
         ]
         state += [l.fraction for l in self.lidar]
-        assert len(state) == 34
+        assert len(state) == 35
 
         self.scroll = pos.x - VIEWPORT_W / SCALE / 5
 
@@ -982,7 +978,8 @@ if __name__ == "__main__":
 
     steps = 0
     total_reward = 0
-    a = np.array([0.0, 0.0, 0.0, 0.0])  # Initial action
+    # a = np.array([0.0, 0.0, 0.0, 0.0])  # Initial action
+    a = np.array([0.0, 0.0, 0.0])  # Initial action
     STAY_ON_ONE_LEG, PUT_OTHER_DOWN, PUSH_OFF = 1, 2, 3
     SPEED = 0.29  # Will fall forward on higher speed
     state = STAY_ON_ONE_LEG
@@ -1000,25 +997,32 @@ if __name__ == "__main__":
         if steps % 20 == 0 or terminated or truncated:
             print(f"\naction {a}")
             print(f"step {steps} total_reward {total_reward:+0.2f}")
-            print(f"hull {s[0:4]}")
-            print(f"leg0 {s[4:9]}")
-            print(f"leg1 {s[9:14]}")
+            print(f"hull {s[0:6]}")
+            print(f"back leg {s[6:8]}")
+            print(f"back wheel {s[8:10]}")
+            print(f"front leg {s[10:12]}")
+            print(f"front wheel {s[12:14]}")
+            print(f"lander {s[14]}")
 
         steps += 1
 
         # Update the logic for controlling the walker
         # (control logic remains unchanged from the provided script)
 
-        contact0 = s[8]
+        contact0 = s[9]
         contact1 = s[13]
         moving_s_base = 4 + 5 * moving_leg
         supporting_s_base = 4 + 5 * supporting_leg
+
+        # print("moving_s_base", moving_s_base) 4
+        # print("supporting_s_base", supporting_s_base) 9
 
         hip_targ = [None, None]  # -0.8 .. +1.1
         knee_targ = [None, None]  # -0.6 .. +0.9
         hip_todo = [0.0, 0.0]
         knee_todo = [0.0, 0.0]
 
+        # print(state) 3
         if state == STAY_ON_ONE_LEG:
             hip_targ[moving_leg] = 1.1
             knee_targ[moving_leg] = -0.6
@@ -1039,6 +1043,7 @@ if __name__ == "__main__":
         if state == PUSH_OFF:
             knee_targ[moving_leg] = supporting_knee_angle
             knee_targ[supporting_leg] = +1.0
+            # print("knee_targ", knee_targ)   # [0.035199597, 1.0]
             if s[supporting_s_base + 2] > 0.88 or s[2] > 1.2 * SPEED:
                 state = STAY_ON_ONE_LEG
                 moving_leg = 1 - moving_leg
@@ -1061,10 +1066,13 @@ if __name__ == "__main__":
         knee_todo[1] -= 15.0 * s[3]
 
         # Update the action
+        # a[0] = hip_todo[0]
+        # a[1] = knee_todo[0]
+        # a[2] = hip_todo[1]
+        # a[3] = knee_todo[1]
         a[0] = hip_todo[0]
         a[1] = knee_todo[0]
-        a[2] = hip_todo[1]
-        a[3] = knee_todo[1]
+        a[2] = knee_todo[1]
         a = np.clip(0.5 * a, -1.0, 1.0)
 
         if terminated or truncated:

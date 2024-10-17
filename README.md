@@ -1,12 +1,46 @@
 # ME5418_ML
 
-## zewen:
+## Steps to Set Up
+
+### Step1: Environment configuration
+
+```
+mkdir your_workspace
+cd your_workspace/
+git clone https://github.com/YukiKuma111/ME5418_ML.git
+cd ME5418_ML/
+conda env create -f environment.yaml
+```
+
+<!-- ## zewen:
 
 
 ## rui:
 
 
 ## ziyue:
+
+### 2024.10.17:
+
+- class ContactDetector：
+
+    1. run时发现lander的触底检测无效，现已修复
+    2. 
+
+### 2024.10.16:
+
+- README.md:
+
+    1. 修改了一下格式
+    2. 把我们做记录的地方进行了注释，这样就只会在编辑模式下看到记录
+    3. 增加了Steps to Set Up & Step1: Environment configuration
+
+- 增加environment.yaml
+
+- __init__部分
+
+    1. 修改了action space和observation space
+    - 发现运行后小车倒着跑
 
 ### 2024.10.13:
 - reset部分
@@ -38,6 +72,8 @@
 
     1. 参考zewen的修改进行了更新
 
+    ***
+
 - _generate_terrain部分
 
     1. 删除PIT陷阱
@@ -47,10 +83,14 @@
     5. 调高了step的间距 1 -> 2
     6. 增加了hole
 
+    ***
+
 - step部分
 
     1. 修改了机关雷达的扫描范围（0~pi，接近半圆形但似乎不是垂直于地面？）
     2. state有增加：assert len(state) == 24 -> 34
+
+    ***
 
 before：
 - reset部分
@@ -58,4 +98,4 @@ before：
     2. 让lander与hull之间是焊接连接weld
     3. 将wheel设置成了wheel的转动
     4. 更换了wedth和height的变量名 -> half
-    5. 在self.drawlist中添加了self.lander
+    5. 在self.drawlist中添加了self.lander -->
