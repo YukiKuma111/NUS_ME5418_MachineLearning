@@ -32,8 +32,10 @@ if TYPE_CHECKING:
 FPS = 50
 SCALE = 30.0  # affects how fast-paced the game is, forces should be adjusted as well
 
-MOTORS_TORQUE = 80
-SPEED_HIP = 4
+# MOTORS_TORQUE = 80
+MOTORS_TORQUE = 160
+# SPEED_HIP = 4
+SPEED_HIP = 10
 SPEED_KNEE = 6
 LIDAR_RANGE = 160 / SCALE
 
@@ -424,11 +426,13 @@ class BipedalWalker(gym.Env, EzPickle):
                         ),
                         (
                             x + ((1 + s) * stair_width) * TERRAIN_STEP,
-                            y + (-1 + s * stair_height) * TERRAIN_STEP,
+                            # y + (-1 + s * stair_height) * TERRAIN_STEP,
+                            y + (-2 + s * stair_height) * TERRAIN_STEP,
                         ),
                         (
                             x + (s * stair_width) * TERRAIN_STEP,
-                            y + (-1 + s * stair_height) * TERRAIN_STEP,
+                            # y + (-1 + s * stair_height) * TERRAIN_STEP,
+                            y + (-2 + s * stair_height) * TERRAIN_STEP,
                         ),
                     ]
                     self.fd_polygon.shape.vertices = poly
@@ -695,18 +699,10 @@ class BipedalWalker(gym.Env, EzPickle):
             self.joints[1].maxMotorTorque = float(
                 MOTORS_TORQUE * np.clip(np.abs(action[1]), 0, 1)
             )
-            # self.joints[2].motorSpeed = float(SPEED_HIP * np.sign(action[2]))
-            # self.joints[2].maxMotorTorque = float(
-            #     MOTORS_TORQUE * np.clip(np.abs(action[2]), 0, 1)
-            # )
             self.joints[2].motorSpeed = float(SPEED_HIP * np.sign(action[0]) * (-1))
             self.joints[2].maxMotorTorque = float(
                 MOTORS_TORQUE * np.clip(np.abs(action[0]), 0, 1)
             )
-            # self.joints[3].motorSpeed = float(SPEED_KNEE * np.sign(action[3]))
-            # self.joints[3].maxMotorTorque = float(
-            #     MOTORS_TORQUE * np.clip(np.abs(action[3]), 0, 1)
-            # )
             self.joints[3].motorSpeed = float(SPEED_KNEE * np.sign(action[2]))
             self.joints[3].maxMotorTorque = float(
                 MOTORS_TORQUE * np.clip(np.abs(action[2]), 0, 1)
@@ -980,9 +976,11 @@ if __name__ == "__main__":
     total_reward = 0
     # a = np.array([0.0, 0.0, 0.0, 0.0])  # Initial action
     a = np.array([0.0, 0.0, 0.0])  # Initial action
-    STAY_ON_ONE_LEG, PUT_OTHER_DOWN, PUSH_OFF = 1, 2, 3
+    # STAY_ON_ONE_LEG, PUT_OTHER_DOWN, PUSH_OFF = 1, 2, 3
+    UGV, CROUCHING, STOP, UAS = 1, 2, 3, 4
     SPEED = 0.29  # Will fall forward on higher speed
-    state = STAY_ON_ONE_LEG
+    # state = STAY_ON_ONE_LEG
+    state = UGV
     moving_leg = 0
     supporting_leg = 1 - moving_leg
     SUPPORT_KNEE_ANGLE = +0.1
@@ -1014,65 +1012,53 @@ if __name__ == "__main__":
         moving_s_base = 4 + 5 * moving_leg
         supporting_s_base = 4 + 5 * supporting_leg
 
-        # print("moving_s_base", moving_s_base) 4
-        # print("supporting_s_base", supporting_s_base) 9
+        leg_targ = [None, None]  # -0.8 .. +1.1
+        wheel_targ = [None, None]  # -0.6 .. +0.9
+        leg_todo = [0.0, 0.0]
+        wheel_todo = [0.0, 0.0]
 
-        hip_targ = [None, None]  # -0.8 .. +1.1
-        knee_targ = [None, None]  # -0.6 .. +0.9
-        hip_todo = [0.0, 0.0]
-        knee_todo = [0.0, 0.0]
+        if state == UGV:
+            wheel_targ[0] = -1.0
+            wheel_targ[1] = -1.0
+            leg_targ[0] = np.pi / 4
+            leg_targ[1] = np.pi / 4
+        if state == CROUCHING:
+            wheel_targ[0] = -0.01
+            wheel_targ[1] = -0.01
+            leg_targ[0] = -1 * np.pi / 18
+            leg_targ[1] = -1 * np.pi / 18
+        if state == STOP:
+            wheel_targ[0] = -0.01
+            wheel_targ[1] = -0.01
+            leg_targ[0] = np.pi / 4
+            leg_targ[1] = np.pi / 4
+        if state == UAS:
+            wheel_targ[0] = -0.01
+            wheel_targ[1] = -0.01
+            leg_targ[0] = -np.pi
+            leg_targ[1] = -np.pi
 
-        # print(state) 3
-        if state == STAY_ON_ONE_LEG:
-            hip_targ[moving_leg] = 1.1
-            knee_targ[moving_leg] = -0.6
-            supporting_knee_angle += 0.03
-            if s[2] > SPEED:
-                supporting_knee_angle += 0.03
-            supporting_knee_angle = min(supporting_knee_angle, SUPPORT_KNEE_ANGLE)
-            knee_targ[supporting_leg] = supporting_knee_angle
-            if s[supporting_s_base + 0] < 0.10:  # supporting leg is behind
-                state = PUT_OTHER_DOWN
-        if state == PUT_OTHER_DOWN:
-            hip_targ[moving_leg] = +0.1
-            knee_targ[moving_leg] = SUPPORT_KNEE_ANGLE
-            knee_targ[supporting_leg] = supporting_knee_angle
-            if s[moving_s_base + 4]:
-                state = PUSH_OFF
-                supporting_knee_angle = min(s[moving_s_base + 2], SUPPORT_KNEE_ANGLE)
-        if state == PUSH_OFF:
-            knee_targ[moving_leg] = supporting_knee_angle
-            knee_targ[supporting_leg] = +1.0
-            # print("knee_targ", knee_targ)   # [0.035199597, 1.0]
-            if s[supporting_s_base + 2] > 0.88 or s[2] > 1.2 * SPEED:
-                state = STAY_ON_ONE_LEG
-                moving_leg = 1 - moving_leg
-                supporting_leg = 1 - moving_leg
-
-        # Calculate control actions based on target positions and current state
-        if hip_targ[0]:
-            hip_todo[0] = 0.9 * (hip_targ[0] - s[4]) - 0.25 * s[5]
-        if hip_targ[1]:
-            hip_todo[1] = 0.9 * (hip_targ[1] - s[9]) - 0.25 * s[10]
-        if knee_targ[0]:
-            knee_todo[0] = 4.0 * (knee_targ[0] - s[6]) - 0.25 * s[7]
-        if knee_targ[1]:
-            knee_todo[1] = 4.0 * (knee_targ[1] - s[11]) - 0.25 * s[12]
+        if leg_targ[0]:
+            leg_todo[0] = 0.9 * (leg_targ[0] - s[6]) - 0.25 * s[7]
+        if leg_targ[1]:
+            leg_todo[1] = 0.9 * (leg_targ[1] - s[10]) - 0.25 * s[11]
+        if wheel_targ[0]:
+            wheel_todo[0] = 4.0 * (wheel_targ[0] - s[8])
+        if wheel_targ[1]:
+            wheel_todo[1] = 4.0 * (wheel_targ[1] - s[12])
 
         # PID control to keep head straight and reduce oscillations
-        hip_todo[0] -= 0.9 * (0 - s[0]) - 1.5 * s[1]
-        hip_todo[1] -= 0.9 * (0 - s[0]) - 1.5 * s[1]
-        knee_todo[0] -= 15.0 * s[3]
-        knee_todo[1] -= 15.0 * s[3]
+        # leg_todo[0] -= 0.9 * (0 - s[0]) - 1.5 * s[1]
+        # leg_todo[1] -= 0.9 * (0 - s[0]) - 1.5 * s[1]
+        leg_todo[0] -= 3 * (0 - s[0]) - 1.5 * s[1]
+        leg_todo[1] -= 3 * (0 - s[0]) - 1.5 * s[1]
+        wheel_todo[0] -= 15.0 * s[3]
+        wheel_todo[1] -= 15.0 * s[3]
 
         # Update the action
-        # a[0] = hip_todo[0]
-        # a[1] = knee_todo[0]
-        # a[2] = hip_todo[1]
-        # a[3] = knee_todo[1]
-        a[0] = hip_todo[0]
-        a[1] = knee_todo[0]
-        a[2] = knee_todo[1]
+        a[0] = (leg_todo[0] + leg_todo[1]) / 2
+        a[1] = wheel_todo[0]
+        a[2] = wheel_todo[1]
         a = np.clip(0.5 * a, -1.0, 1.0)
 
         if terminated or truncated:

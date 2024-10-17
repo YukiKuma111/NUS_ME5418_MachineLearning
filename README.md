@@ -10,6 +10,9 @@ cd your_workspace/
 git clone https://github.com/YukiKuma111/ME5418_ML.git
 cd ME5418_ML/
 conda env create -f environment.yaml
+
+# test env
+python m4_env.py
 ```
 
 <!-- ## zewen:
@@ -20,12 +23,84 @@ conda env create -f environment.yaml
 
 ## ziyue:
 
+Question:
+
+    - 应该一个类似于时间限制的控制器？如果小车一段时间内都没有产生移动，就会kill掉这个episode
+
 ### 2024.10.17:
 
 - class ContactDetector：
 
     1. run时发现lander的触底检测无效，现已修复
-    2. 
+
+- initial part:
+
+    1. 修改了几个参数，但是不确定是否正确
+        MOTORS_TORQUE = 160
+        SPEED_HIP = 10
+
+- _generate_terrain：
+
+    1. 增加了楼梯可视化的高度（之前只改变了位置高度，没有调整poly的高）
+
+- __name__ == "__main__":
+
+    1. 注释了源码的state判断，直接写轮子转速
+
+    - if state == UGV:  任意给一个大于0的leg_targ就可以
+        wheel_targ[0] = -1.0
+        wheel_targ[1] = -1.0
+        leg_targ[0] = np.pi / 4
+        leg_targ[1] = np.pi / 4
+    action [ 0.44878279 -0.00321004  0.00504127]
+    step 720 total_reward +179.51
+    hull [-1.6950037e-03  1.8976265e-06  4.0706563e-01  2.1003921e-06
+    5.9721370e+00  4.6707901e-01]
+    back leg [3.498923e-03 3.394467e-05]
+    back wheel [-0.99838305  0.        ]
+    front leg [-1.4989525e-03 -7.5649587e-07]
+    front wheel [-1.0023984  1.       ]
+    lander 0.0
+
+    - if state == STOP: 同上，任意给一个大于0的leg_targ就可以，设置一个较小的wheel_targ
+        wheel_targ[0] = -0.01
+        wheel_targ[1] = -0.01
+        leg_targ[0] = np.pi / 4
+        leg_targ[1] = np.pi / 4
+    action [ 0.45284462 -0.02000004 -0.02000004]
+    step 1220 total_reward -18.03
+    hull [ 3.3692137e-04 -7.8427037e-10 -5.0731908e-09 -1.1295026e-09
+    5.5201554e-01  4.6696785e-01]
+    back leg [4.7217458e-03 5.7731597e-15]
+    back wheel [2.7022175e-08 1.0000000e+00]
+    front leg [-1.6690657e-02 -4.4408921e-16]
+    front wheel [2.7417768e-08 0.0000000e+00]
+    lander 0.0
+
+    - if state == UAS:  暂时还没有转轮子产生风；后腿leg_targ在-np.pi
+        wheel_targ[0] = -0.01
+        wheel_targ[1] = -0.01
+        leg_targ[0] = -np.pi
+        leg_targ[1] = -np.pi
+    action [-1. -1. -1.]
+    step 3440 total_reward -290.66
+    hull [ 2.2823205e-04  2.1673422e-03 -3.8735073e-03 -1.7998373e-05
+    5.0355148e-01  3.2691330e-01]
+    back leg [-3.1713054e+00  1.8356368e-06]
+    back wheel [-0.7392487  0.       ]
+    front leg [3.1714251e+00 1.2107193e-07]
+    front wheel [-0.7392414  0.       ]
+    lander 1.0
+
+    - 完整跑完一个episode：
+    step 1296 total_reward +340.49
+    hull [-4.9899105e-04 -1.1690515e-03  4.0942398e-01  3.3036969e-03
+    1.0647765e+01  4.6736881e-01]
+    back leg [ 3.497310e-03 -5.736947e-07]
+    back wheel [-0.9824801  1.       ]
+    front leg [-2.2177882e-03  1.3364479e-07]
+    front wheel [-0.9820424  0.       ]
+    lander 0.0
 
 ### 2024.10.16:
 
