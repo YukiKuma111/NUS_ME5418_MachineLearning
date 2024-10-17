@@ -1,4 +1,4 @@
-name: ppo_env_test
+name: me5418_g24
 channels:
   - conda-forge
   - defaults
@@ -35,3 +35,8 @@ dependencies:
       - pyparsing==3.1.4
       - six==1.16.0
       - zipp==3.20.2
+      - gym==0.26.2
+      - cloudpickle
+      - gym-notices
+      - importlib-metadata
+      - numpy

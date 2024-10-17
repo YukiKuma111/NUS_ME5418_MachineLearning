@@ -64,11 +64,6 @@ TERRAIN_GRASS = 25  # low long are grass spots, in steps
 TERRAIN_STARTPAD = 20  # in steps
 FRICTION = 2.5
 
-# engine physical parameters
-LITATION_COEFFICIENT = 243
-QUANTITY_OUTLINE_ADAPTOR = 0.15 # cm -> m
-ENGINE_POWER_FACTOR = 53526
-
 HULL_FD = fixtureDef(
     shape=polygonShape(vertices=[(x / SCALE, y / SCALE) for x, y in HULL_POLY]),
     density=5.0,
@@ -683,110 +678,20 @@ class BipedalWalker(gym.Env, EzPickle):
     def step(self, action: np.ndarray):
         assert self.hull is not None
 
-        # UAS mode
-        if self.lander[0].ground_contact and not self.legs[1].ground_contact and not self.legs[3].ground_contact:
-            # Rear leg control
-            self.joints[0].motorSpeed = float(
-                SPEED_HIP * np.clip(action[0], -1, -1)
-            )
-            self.joints[0].maxMotorTorque = float(
-                MOTORS_TORQUE * np.clip(np.abs(action[0]), 0, 1)
-            )
-            # Front leg control
-            self.joints[2].motorSpeed = float(
-                SPEED_HIP * np.clip(action[0], 1, 1)
-            )
-            self.joints[2].maxMotorTorque = float(
-                MOTORS_TORQUE * np.clip(np.abs(action[0]), 0, 1)
-            )
-            # engine parameters setting
-            # direction of engines' impulse
-            tip = (-math.sin(self.hull.angle), math.cos(self.hull.angle))
-
-            # particle power
-            p_power = (np.clip(action[1], 0, 1) + 1.0) * 0.5
-
-            # impulse pos offset
-            offset = WHEEL_RADIUS / SCALE + 0.1
-            impulse_offset = (-tip[0] * offset, -tip[1] * offset)
-
-            # left wheel's engine
-            blade_angular_speed_left = float(SPEED_KNEE * np.clip(action[1], 0, 1))
-            impulse_magnitude_left = LITATION_COEFFICIENT * pow(blade_angular_speed_left, 2) * pow(
-                QUANTITY_OUTLINE_ADAPTOR, 3)
-
-            # impulse pos left
-            impulse_pos_left = \
-                (self.legs[1].position[0] + impulse_offset[0],
-                self.legs[1].position[1] + impulse_offset[1])
-
-            # impulse left
-            impulse_left = (impulse_magnitude_left * tip[0], impulse_magnitude_left * tip[1])
-
-            # right wheel's engine
-            blade_angular_speed_right = float(SPEED_KNEE * np.clip(action[2], 0, 1))
-            impulse_magnitude_right = LITATION_COEFFICIENT * pow(blade_angular_speed_right, 2) * pow(
-                QUANTITY_OUTLINE_ADAPTOR, 3)
-
-            # impulse pos right
-            impulse_pos_right = \
-                (self.legs[3].position[0] + impulse_offset[0],
-                self.legs[3].position[1] + impulse_offset[1])
-
-            # impulse right
-            impulse_right = (impulse_magnitude_right * tip[0], impulse_magnitude_right * tip[1])
-
-            # engine activates
-            # create particles left
-            p_left = self._create_particle(
-                3.5,
-                impulse_pos_left[0],
-                impulse_pos_left[1],
-                p_power,
-            )
-
-            # apply impulse to particle
-            p_left.ApplyLinearImpulse(
-                (-impulse_left[0], -impulse_left[1]),
-                impulse_pos_left,
-                True
-            )
-
-            # apply impulse to the left wheel
-            self.legs[1].ApplyLinearImpulse(
-                impulse_left,
-                impulse_pos_left,
-                True
-            )
-
-            # create particles right
-            p_right = self._create_particle(
-                3.5,
-                impulse_pos_right[0],
-                impulse_pos_right[1],
-                p_power,
-            )
-
-            # apply impulse to particle
-            p_right.ApplyLinearImpulse(
-                (-impulse_right[0], -impulse_right[1]),
-                impulse_pos_right,
-                True
-            )
-
-            # apply impulse to the left wheel
-            self.legs[3].ApplyLinearImpulse(
-                impulse_right,
-                impulse_pos_right,
-                True
-            )
-        # Other mode
+        # self.hull.ApplyForceToCenter((0, 20), True) -- Uncomment this to receive a bit of stability help
+        control_speed = False  # Should be easier as well
+        if control_speed:
+            self.joints[0].motorSpeed = float(SPEED_HIP * np.clip(action[0], -1, 1))
+            self.joints[1].motorSpeed = float(SPEED_KNEE * np.clip(action[1], -1, 1))
+            self.joints[2].motorSpeed = float(SPEED_HIP * np.clip(action[2], -1, 1))
+            self.joints[3].motorSpeed = float(SPEED_KNEE * np.clip(action[3], -1, 1))
         else:
             rear_leg_speed = self.joints[0].speed / SPEED_HIP
             front_leg_speed = self.joints[2].speed / SPEED_HIP
             leg_damping = 0.15
             
             # Rear leg control
+            # self.joints[0].motorSpeed = float(SPEED_HIP * np.sign(action[0]))
             self.joints[0].motorSpeed = float(SPEED_HIP * np.sign(action[0]) - leg_damping * rear_leg_speed)
             self.joints[0].maxMotorTorque = float(
                 MOTORS_TORQUE * np.clip(np.abs(action[0]), 0, 1)
@@ -797,6 +702,7 @@ class BipedalWalker(gym.Env, EzPickle):
                 MOTORS_TORQUE * np.clip(np.abs(action[1]), 0, 1)
             )
             # Front leg control
+            # self.joints[2].motorSpeed = float(SPEED_HIP * np.sign(action[0]) * (-1))
             self.joints[2].motorSpeed = float(SPEED_HIP * np.sign(action[2]) - leg_damping * front_leg_speed)
             self.joints[2].maxMotorTorque = float(
                 MOTORS_TORQUE * np.clip(np.abs(action[0]), 0, 1)
@@ -982,7 +888,6 @@ class BipedalWalker(gym.Env, EzPickle):
         self._clean_particles(False)
         
         # Draw robots, particles and other objects
-        self.drawlist = self.drawlist + self.particles
         for obj in self.drawlist:
             for f in obj.fixtures:
                 trans = f.body.transform

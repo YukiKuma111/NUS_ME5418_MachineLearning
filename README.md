@@ -29,6 +29,10 @@ Question:
 
 ### 2024.10.17:
 
+- environment.yaml
+
+    1. 发现缺少gym库，目前已添加其和其依赖，但是还需等孙老师进行测试
+
 - class ContactDetector：
 
     1. run时发现lander的触底检测无效，现已修复
@@ -36,16 +40,37 @@ Question:
 - initial part:
 
     1. 修改了几个参数，但是不确定是否正确
-        MOTORS_TORQUE = 160
+        MOTORS_TORQUE = 400 可能还要改，但是不可以再小了，算出来最小360;而且轮子速度不能很快，不然站不起来
         SPEED_HIP = 10
+        TERRAIN_GRASS = 25  增长obstacles之间的缓冲地面，防止没有地方变形 （孙老师提出的问题）
+        LEG_W, LEG_H = 8 / SCALE, 40 / SCALE 缩短了 LEG_H
+    2. 加入了孙老师定义的UAS相关参数
+
+- __init__:
+
+    1. 多增加了几各文件，分别为
+    “主控后退”  m4_env_1-rearleg.py
+    “主控前腿”  m4_env_1-frontleg.py
+    “主控两腿无飞行”    m4_env_wo-fly.py
+    “主控两腿有飞行但需debug”   m4_env.py
+    “孙老师写的源码”    g24_env.py
+    2. 我把hardcore关掉了，先用于测试！记得上传前开开！
 
 - _generate_terrain：
 
     1. 增加了楼梯可视化的高度（之前只改变了位置高度，没有调整poly的高）
+    2. 发现存在obstacles重叠的情况。现大概已修复？
+
+- step:
+
+    1. 增加了阻尼，但是不知道是否有效果。。。
+    2. 加入了孙老师写的UAS部分，但是有需要调整的地方。比如气体会随着轮子转动，力的大小等。
+    3. 修改了孙老师的原版的逻辑判断，但是有可能还需要修改
 
 - __name__ == "__main__":
 
     1. 注释了源码的state判断，直接写轮子转速
+    2. 写了4个运动形态：STOP，UGV，UAS，CROUCHING，目前除了UAS都可以运行
 
     - if state == UGV:  任意给一个大于0的leg_targ就可以
         wheel_targ[0] = -1.0
