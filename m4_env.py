@@ -129,7 +129,7 @@ class ContactDetector(contactListener):
         for leg in [self.env.legs[1], self.env.legs[3]]:
             if leg in [contact.fixtureA.body, contact.fixtureB.body]:
                 leg.ground_contact = False
-        for lander in [self.env.lander]:
+        for lander in [self.env.lander[0]]:
             if lander in [contact.fixtureA.body, contact.fixtureB.body]:
                 lander.ground_contact = False
 

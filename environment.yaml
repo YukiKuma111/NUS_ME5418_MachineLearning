@@ -1,19 +1,28 @@
-name: me5418_g24
+name: test_env
 channels:
   - conda-forge
   - defaults
 dependencies:
   - _libgcc_mutex=0.1=conda_forge
   - _openmp_mutex=4.5=2_gnu
+  - blas=1.0=mkl
   - ca-certificates=2024.9.24=h06a4308_0
+  - intel-openmp=2023.1.0=hdb19cb5_46306
   - ld_impl_linux-64=2.40=h12ee557_0
   - libffi=3.4.4=h6a678d5_1
   - libgcc=14.1.0=h77fa898_1
   - libgcc-ng=14.1.0=h69a702a_1
   - libgomp=14.1.0=h77fa898_1
   - libstdcxx-ng=11.2.0=h1234567_1
+  - mkl=2023.1.0=h213fc3f_46344
+  - mkl-service=2.4.0=py38h5eee18b_1
+  - mkl_fft=1.3.8=py38h5eee18b_0
+  - mkl_random=1.2.4=py38hdb19cb5_0
   - ncurses=6.4=h6a678d5_0
+  - numpy=1.24.3=py38hf6e8229_1
+  - numpy-base=1.24.3=py38h060ed82_1
   - openssl=3.3.2=hb9d3cd8_0
+  - pcre=8.45=h9c3ff4c_0
   - pexpect=4.9.0=pyhd8ed1ab_0
   - pip=24.2=py38h06a4308_0
   - psutil=5.9.0=py38h5eee18b_0
@@ -22,21 +31,23 @@ dependencies:
   - readline=8.2=h5eee18b_0
   - setuptools=75.1.0=py38h06a4308_0
   - sqlite=3.45.3=h5eee18b_0
+  - swig=4.0.2=hd3c618e_2
+  - tbb=2021.8.0=hdb19cb5_0
   - tk=8.6.14=h39e8969_0
   - wheel=0.44.0=py38h06a4308_0
   - xz=5.4.6=h5eee18b_1
   - zlib=1.2.13=h5eee18b_1
   - pip:
+      - box2d-py==2.3.5
+      - cloudpickle==3.1.0
       - contourpy==1.1.1
       - cycler==0.12.1
       - fonttools==4.54.1
+      - gym==0.26.2
+      - importlib-metadata==8.5.0
       - kiwisolver==1.4.7
       - matplotlib==3.7.5
+      - pygame==2.6.1
       - pyparsing==3.1.4
       - six==1.16.0
       - zipp==3.20.2
-      - gym==0.26.2
-      - cloudpickle
-      - gym-notices
-      - importlib-metadata
-      - numpy
