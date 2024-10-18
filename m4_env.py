@@ -1,4 +1,4 @@
-__credits__ = ["Andrea PIERRÉ"]
+__credits__ = ["Group24"]
 
 import math
 import warnings
@@ -25,7 +25,6 @@ try:
 except ImportError:
     raise DependencyNotInstalled("box2D is not installed, run `pip install gym[box2d]`")
 
-
 if TYPE_CHECKING:
     import pygame
 
@@ -48,8 +47,10 @@ HALF_HEIGHT_LANDER = 6
 HALF_WIDTH_LANDER = 20
 WHEEL_RADIUS = 34 / 2
 
-HULL_POLY = [(-HALF_WIDTH_HULL, HALF_HEIGHT_HULL), (HALF_WIDTH_HULL, HALF_HEIGHT_HULL), (HALF_WIDTH_HULL, -HALF_HEIGHT_HULL), (-HALF_WIDTH_HULL, -HALF_HEIGHT_HULL)]
-LANDER_POLY = [(-HALF_WIDTH_LANDER, HALF_HEIGHT_LANDER), (HALF_WIDTH_LANDER, HALF_HEIGHT_LANDER), (HALF_WIDTH_LANDER, -HALF_HEIGHT_LANDER), (-HALF_WIDTH_LANDER, -HALF_HEIGHT_LANDER)]
+HULL_POLY = [(-HALF_WIDTH_HULL, HALF_HEIGHT_HULL), (HALF_WIDTH_HULL, HALF_HEIGHT_HULL),
+             (HALF_WIDTH_HULL, -HALF_HEIGHT_HULL), (-HALF_WIDTH_HULL, -HALF_HEIGHT_HULL)]
+LANDER_POLY = [(-HALF_WIDTH_LANDER, HALF_HEIGHT_LANDER), (HALF_WIDTH_LANDER, HALF_HEIGHT_LANDER),
+               (HALF_WIDTH_LANDER, -HALF_HEIGHT_LANDER), (-HALF_WIDTH_LANDER, -HALF_HEIGHT_LANDER)]
 LEG_DOWN = -8 / SCALE
 LEG_W, LEG_H = 8 / SCALE, 40 / SCALE
 
@@ -66,8 +67,9 @@ FRICTION = 2.5
 
 # engine physical parameters
 LITATION_COEFFICIENT = 243
-QUANTITY_OUTLINE_ADAPTOR = 0.15 # cm -> m
+QUANTITY_OUTLINE_ADAPTOR = 0.08  # cm -> m
 ENGINE_POWER_FACTOR = 53526
+throttle_increase_rate = 0.01
 
 HULL_FD = fixtureDef(
     shape=polygonShape(vertices=[(x / SCALE, y / SCALE) for x, y in HULL_POLY]),
@@ -103,6 +105,7 @@ LANDER_FD = fixtureDef(
     restitution=0.0,
 )  # 0.99 bouncy
 
+
 # LEG_FD WHEEL_FD LANDER_FD的密度需要调整
 
 
@@ -114,8 +117,8 @@ class ContactDetector(contactListener):
 
     def BeginContact(self, contact):
         if (
-            self.env.hull == contact.fixtureA.body
-            or self.env.hull == contact.fixtureB.body
+                self.env.hull == contact.fixtureA.body
+                or self.env.hull == contact.fixtureB.body
         ):
             self.env.game_over = True
         for leg in [self.env.legs[1], self.env.legs[3]]:
@@ -204,14 +207,14 @@ class BipedalWalker(gym.Env, EzPickle):
     }
 
     def __init__(self,
-            render_mode: Optional[str] = None,
-            continuous: bool = True,
-            gravity: float = -9.8,
-            enable_wind: bool = False,
-            wind_power: float = 15.0,
-            turbulence_power: float = 0,
-            hardcore:bool = False,
-            ):
+                 render_mode: Optional[str] = None,
+                 continuous: bool = True,
+                 gravity: float = -9.8,
+                 enable_wind: bool = False,
+                 wind_power: float = 15.0,
+                 turbulence_power: float = 0,
+                 hardcore: bool = True,
+                 ):
         EzPickle.__init__(
             self,
             render_mode,
@@ -248,6 +251,8 @@ class BipedalWalker(gym.Env, EzPickle):
                     "yellow",
                 ),
             )
+
+
         self.turbulence_power = turbulence_power
 
         self.enable_wind = enable_wind
@@ -278,30 +283,34 @@ class BipedalWalker(gym.Env, EzPickle):
         self.prev_shaping = None
         self.particles = []
 
+        # engine init
+        self.throttle_left = 0.0
+        self.throttle_right = 0.0
+
         # observation space (v1: modify by zewen) (v2: modify by ziyue, not sure horizontal position and vertical position are needed, and need (-99999, 99999))
-        # hull: angle, angular velocityhorizontal speed, horizontal speed, vertical speed, horizontal position, vertical position
+        # hull: angle, angular velocity horizontal speed, horizontal speed, vertical speed, horizontal position, vertical position
         # two legs: angle, joints angular speed
         # two wheels: joints angular speed, contact with ground
         # lander: contact with ground
         # lidar: 20 rangefinder measurements
         low = np.array([
-            -math.pi, -5.0, -5.0, -5.0, -99999, -99999,
-            -math.pi, -5.0,
-            -5.0, 0,
-            -math.pi, -5.0,
-            -5.0, 0,
-            0
-            ]+ [-1.0] * 20).astype(np.float32)
+                           -math.pi, -5.0, -5.0, -5.0, -99999, -99999,
+                           -math.pi, -5.0,
+                           -5.0, 0,
+                           -math.pi, -5.0,
+                           -5.0, 0,
+                           0
+                       ] + [-1.0] * 20).astype(np.float32)
 
         high = np.array([
-            math.pi, 5.0, 5.0, 5.0, 99999, 99999,
-            math.pi, 5.0,
-            5.0, 1,
-            math.pi, 5.0,
-            5.0, 1,
-            1
-            ]+ [1.0] * 20).astype(np.float32)
-        
+                            math.pi, 5.0, 5.0, 5.0, 99999, 99999,
+                            math.pi, 5.0,
+                            5.0, 1,
+                            math.pi, 5.0,
+                            5.0, 1,
+                            1
+                        ] + [1.0] * 20).astype(np.float32)
+
         # action space (v1: modify by zewen) (v2: modify by ziyue)
         # leg joint motor speed, front wheel motor speed, back wheel motor speed
         self.action_space = spaces.Box(
@@ -395,7 +404,8 @@ class BipedalWalker(gym.Env, EzPickle):
                 robot_width = (HALF_WIDTH_HULL + WHEEL_RADIUS) * 2 / SCALE + LEG_H * 2
                 robot_height = ((HALF_HEIGHT_HULL * 2 + WHEEL_RADIUS) / SCALE + LEG_H)
                 counterx = self.np_random.integers(robot_width, robot_width * 2.5)
-                countery = self.np_random.integers(VIEWPORT_H / SCALE - robot_height * 2 + HALF_HEIGHT_HULL / SCALE, VIEWPORT_H / SCALE - robot_height)
+                countery = self.np_random.integers(VIEWPORT_H / SCALE - robot_height * 2 + HALF_HEIGHT_HULL / SCALE,
+                                                   VIEWPORT_H / SCALE - robot_height)
                 poly = [
                     (x, y),
                     (x + counterx * TERRAIN_STEP, y),
@@ -469,7 +479,8 @@ class BipedalWalker(gym.Env, EzPickle):
                 robot_width = (HALF_WIDTH_HULL + WHEEL_RADIUS) * 2 / SCALE + LEG_H * 2
                 robot_height = ((HALF_HEIGHT_HULL * 2 + WHEEL_RADIUS) / SCALE + LEG_H)
                 counter = self.np_random.integers(robot_width, 3 * robot_width)
-                hole_height = self.np_random.integers((VIEWPORT_H / SCALE - y) - robot_height, (VIEWPORT_H / SCALE - y) - robot_height / 3)
+                hole_height = self.np_random.integers((VIEWPORT_H / SCALE - y) - robot_height,
+                                                      (VIEWPORT_H / SCALE - y) - robot_height / 3)
                 poly = [
                     (x, VIEWPORT_H / SCALE),
                     (x + counter * TERRAIN_STEP, VIEWPORT_H / SCALE),
@@ -480,7 +491,7 @@ class BipedalWalker(gym.Env, EzPickle):
                 t = self.world.CreateStaticBody(fixtures=self.fd_polygon)
                 t.color1, t.color2 = (255, 255, 255), (153, 153, 153)
                 self.terrain.append(t)
-            
+
             oneshot = False
             self.terrain_y.append(y)
             counter -= 1
@@ -532,18 +543,18 @@ class BipedalWalker(gym.Env, EzPickle):
             self.cloud_poly.append((poly, x1, x2))
 
     def reset(
-        self,
-        *,
-        seed: Optional[int] = None,
-        options: Optional[dict] = None,
+            self,
+            *,
+            seed: Optional[int] = None,
+            options: Optional[dict] = None,
     ):
         super().reset(seed=seed)
         self._destroy()
 
-         # contact listener
+        # contact listener
         self.world.contactListener_bug_workaround = ContactDetector(self)
         self.world.contactListener = self.world.contactListener_bug_workaround
-        
+
         # system reset
         self.game_over = False
         self.prev_shaping = None
@@ -553,6 +564,10 @@ class BipedalWalker(gym.Env, EzPickle):
         # terrain resets
         self._generate_terrain(self.hardcore)
         self._generate_clouds()
+
+        # engine init
+        self.throttle_left = 0.0
+        self.throttle_right = 0.0
 
         # robot resets
         init_x = TERRAIN_STEP * TERRAIN_STARTPAD / 2
@@ -615,12 +630,13 @@ class BipedalWalker(gym.Env, EzPickle):
                 motorSpeed=i,
                 lowerAngle=rjd_lowerAngle,
                 upperAngle=rjd_upperAngle,
-            )   # 让腿能够抬起来
+            )  # 让腿能够抬起来
             self.legs.append(leg)
             self.joints.append(self.world.CreateJoint(rjd))
 
             wheel = self.world.CreateDynamicBody(
-                position=(init_x + i * (HALF_WIDTH_HULL / SCALE), init_y - (HALF_HEIGHT_HULL / SCALE) - LEG_H - WHEEL_RADIUS / SCALE),
+                position=(init_x + i * (HALF_WIDTH_HULL / SCALE),
+                          init_y - (HALF_HEIGHT_HULL / SCALE) - LEG_H - WHEEL_RADIUS / SCALE),
                 angle=(i * 0.05),
                 fixtures=WHEEL_FD,
             )
@@ -674,7 +690,7 @@ class BipedalWalker(gym.Env, EzPickle):
         self.particles.append(p)
         self._clean_particles(False)
         return p
-    
+
     # clean particle (added by zewen)
     def _clean_particles(self, all):
         while self.particles and (all or self.particles[0].ttl < 0):
@@ -682,9 +698,13 @@ class BipedalWalker(gym.Env, EzPickle):
 
     def step(self, action: np.ndarray):
         assert self.hull is not None
-
+        print("action", action)
+        fly_check = ((self.legs[2].angle - self.hull.angle) > 3 and (self.legs[0].angle - self.hull.angle) < -3)
+        print(
+            f"angle difference right {self.legs[2].angle - self.hull.angle}, left {self.legs[0].angle - self.hull.angle}")
         # UAS mode
-        if self.lander[0].ground_contact and not self.legs[1].ground_contact and not self.legs[3].ground_contact:
+        if fly_check:
+            print("fly enable")
             # Rear leg control
             self.joints[0].motorSpeed = float(
                 SPEED_HIP * np.clip(action[0], -1, -1)
@@ -694,98 +714,123 @@ class BipedalWalker(gym.Env, EzPickle):
             )
             # Front leg control
             self.joints[2].motorSpeed = float(
-                SPEED_HIP * np.clip(action[0], 1, 1)
+                SPEED_HIP * np.clip(action[2], 1, 1)
             )
             self.joints[2].maxMotorTorque = float(
-                MOTORS_TORQUE * np.clip(np.abs(action[0]), 0, 1)
+                MOTORS_TORQUE * np.clip(np.abs(action[2]), 0, 1)
             )
             # engine parameters setting
             # direction of engines' impulse
             tip = (-math.sin(self.hull.angle), math.cos(self.hull.angle))
 
             # particle power
-            p_power = (np.clip(action[1], 0, 1) + 1.0) * 0.5
+            p_power_left = (np.clip(np.abs(action[1]), 0, 1) + 1.0) * 0.5
+            p_power_right = (np.clip(np.abs(action[3]), 0, 1) + 1.0) * 0.5
 
             # impulse pos offset
-            offset = WHEEL_RADIUS / SCALE + 0.1
-            impulse_offset = (-tip[0] * offset, -tip[1] * offset)
+            #offset = WHEEL_RADIUS / SCALE + 0.1
+            #impulse_offset = (-tip[0] * offset, -tip[1] * offset)
 
             # left wheel's engine
-            blade_angular_speed_left = float(SPEED_KNEE * np.clip(action[1], 0, 1))
+            blade_angular_speed_left = float(SPEED_KNEE * np.clip(np.abs(action[1]), 0, 1))
             impulse_magnitude_left = LITATION_COEFFICIENT * pow(blade_angular_speed_left, 2) * pow(
                 QUANTITY_OUTLINE_ADAPTOR, 3)
 
+            print("blade_angular_speed_left", blade_angular_speed_left)
+            print("impulse_magnitude_left",impulse_magnitude_left)
+
             # impulse pos left
             impulse_pos_left = \
-                (self.legs[1].position[0] + impulse_offset[0],
-                self.legs[1].position[1] + impulse_offset[1])
+                (self.legs[0].position[0],
+                 self.legs[0].position[1])
+            print("self.legs[0].position", self.legs[0].position, "self.legs[2].position", self.legs[2].position)
 
             # impulse left
             impulse_left = (impulse_magnitude_left * tip[0], impulse_magnitude_left * tip[1])
 
             # right wheel's engine
-            blade_angular_speed_right = float(SPEED_KNEE * np.clip(action[2], 0, 1))
+            blade_angular_speed_right = float(SPEED_KNEE * np.clip(np.abs(action[3]), 0, 1))
             impulse_magnitude_right = LITATION_COEFFICIENT * pow(blade_angular_speed_right, 2) * pow(
                 QUANTITY_OUTLINE_ADAPTOR, 3)
 
+            print("blade_angular_speed_right", blade_angular_speed_right)
+            print("impulse_magnitude_right", impulse_magnitude_right)
+
+
             # impulse pos right
             impulse_pos_right = \
-                (self.legs[3].position[0] + impulse_offset[0],
-                self.legs[3].position[1] + impulse_offset[1])
+                (self.legs[2].position[0],
+                 self.legs[2].position[1])
 
             # impulse right
             impulse_right = (impulse_magnitude_right * tip[0], impulse_magnitude_right * tip[1])
+
+            # During each step, gradually increase the throttle
+            self.throttle_left = min(self.throttle_left + throttle_increase_rate, 1.0)
+            self.throttle_right = min(self.throttle_right + throttle_increase_rate, 1.0)
+
+            # Calculate the scaled impulse using the throttle levels
+            scaled_impulse_left = (
+                impulse_left[0] * self.throttle_left,
+                impulse_left[1] * self.throttle_left
+            )
+            scaled_impulse_right = (
+                impulse_right[0] * self.throttle_right,
+                impulse_right[1] * self.throttle_right
+            )
 
             # engine activates
             # create particles left
             p_left = self._create_particle(
                 3.5,
-                impulse_pos_left[0],
-                impulse_pos_left[1],
-                p_power,
+                impulse_pos_left[0] - LEG_H*tip[0],
+                impulse_pos_left[1] - LEG_H*tip[1],
+                p_power_left,
             )
 
             # apply impulse to particle
             p_left.ApplyLinearImpulse(
-                (-impulse_left[0], -impulse_left[1]),
+                (-scaled_impulse_left[0], -scaled_impulse_left[1]),
                 impulse_pos_left,
                 True
             )
 
-            # apply impulse to the left wheel
-            self.legs[1].ApplyLinearImpulse(
-                impulse_left,
+            # apply impulse to the left leg
+            self.legs[0].ApplyLinearImpulse(
+                scaled_impulse_left,
                 impulse_pos_left,
                 True
             )
+            #print("self.legs[0].ApplyLinearImpulse",self.legs[0].ApplyLinearImpulse)
 
             # create particles right
             p_right = self._create_particle(
                 3.5,
-                impulse_pos_right[0],
-                impulse_pos_right[1],
-                p_power,
+                impulse_pos_right[0] - LEG_H * tip[0],
+                impulse_pos_right[1] - LEG_H * tip[1],
+                p_power_right,
             )
 
             # apply impulse to particle
             p_right.ApplyLinearImpulse(
-                (-impulse_right[0], -impulse_right[1]),
+                (-scaled_impulse_right[0], -scaled_impulse_right[1]),
                 impulse_pos_right,
                 True
             )
 
-            # apply impulse to the left wheel
-            self.legs[3].ApplyLinearImpulse(
-                impulse_right,
+            # apply impulse to the right leg
+            self.legs[2].ApplyLinearImpulse(
+                scaled_impulse_right,
                 impulse_pos_right,
                 True
             )
+            #print("self.legs[2].ApplyLInearImpulse",self.legs[2].ApplyLinearImuplse)
         # Other mode
         else:
             rear_leg_speed = self.joints[0].speed / SPEED_HIP
             front_leg_speed = self.joints[2].speed / SPEED_HIP
             leg_damping = 0.15
-            
+
             # Rear leg control
             self.joints[0].motorSpeed = float(SPEED_HIP * np.sign(action[0]) - leg_damping * rear_leg_speed)
             self.joints[0].maxMotorTorque = float(
@@ -845,7 +890,7 @@ class BipedalWalker(gym.Env, EzPickle):
         self.scroll = pos.x - VIEWPORT_W / SCALE / 5
 
         shaping = (
-            130 * pos[0] / SCALE
+                130 * pos[0] / SCALE
         )  # moving forward is a way to receive reward (normalized to get 300 on completion)
         shaping -= 5.0 * abs(
             state[0]
@@ -859,6 +904,12 @@ class BipedalWalker(gym.Env, EzPickle):
         for a in action:
             reward -= 0.00035 * MOTORS_TORQUE * np.clip(np.abs(a), 0, 1)
             # normalized to about -50.0 using heuristic, more optimal agent should spend less
+            if self.legs[3].ApplyLinearImpulse == True and self.legs[1].ApplyLinearImpulse == True:
+                # flying energy consumption
+                reward -= 0.035 * ENGINE_POWER_FACTOR * pow(blade_angular_speed_left, 2) * pow(QUANTITY_OUTLINE_ADAPTOR,
+                                                                                               2)
+                # the balance the hull when flying
+                reward -= 10 * (np.abs(self.hull.angle) - 30)
 
         terminated = False
         if self.game_over or pos[0] < 0:
@@ -979,11 +1030,13 @@ class BipedalWalker(gym.Env, EzPickle):
                 int(max(0.2, 0.5 * obj.ttl) * 255),
                 int(max(0.2, 0.5 * obj.ttl) * 255),
             )
+
         self._clean_particles(False)
-        
+
         # Draw robots, particles and other objects
-        self.drawlist = self.drawlist + self.particles
-        for obj in self.drawlist:
+        # self.drawlist = self.drawlist + self.particles
+
+        for obj in self.particles + self.drawlist:
             for f in obj.fixtures:
                 trans = f.body.transform
                 if type(f.shape) is circleShape:
@@ -1047,7 +1100,7 @@ class BipedalWalker(gym.Env, EzPickle):
             return np.transpose(
                 np.array(pygame.surfarray.pixels3d(self.surf)), axes=(1, 0, 2)
             )[:, -VIEWPORT_W:]
-    
+
     def close(self):
         if self.screen is not None:
             import pygame
@@ -1056,7 +1109,7 @@ class BipedalWalker(gym.Env, EzPickle):
             pygame.quit()
             self.isopen = False
 
-    
+
 class BipedalWalkerHardcore:
     def __init__(self):
         raise error.Error(
@@ -1120,8 +1173,12 @@ if __name__ == "__main__":
             leg_targ[0] = np.pi / 4
             leg_targ[1] = -np.pi / 4
         if state == UAS:
-            wheel_targ[0] = -0.01
-            wheel_targ[1] = -0.01
+            if steps < 200:
+                wheel_targ[0] = -0.01
+                wheel_targ[1] = -0.01
+            else:
+                wheel_targ[0] = 0
+                wheel_targ[1] = 0
             leg_targ[0] = -np.pi
             leg_targ[1] = np.pi
 
