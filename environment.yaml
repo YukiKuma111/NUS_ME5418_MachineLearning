@@ -1,4 +1,4 @@
-name: test_env
+name: me5418_group24
 channels:
   - conda-forge
   - defaults
