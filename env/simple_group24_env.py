@@ -647,11 +647,14 @@ class Group24(gym.Env, EzPickle):
         while self.particles and (all or self.particles[0].ttl < 0):
             self.world.DestroyBody(self.particles.pop(0))
 
-    def step(self, action: np.ndarray):
+    def step(self, action: np.ndarray, fly_mode_flag=True):
         assert self.hull is not None
-        fly_check = (self.legs[2].angle - self.hull.angle) > 3 and (
-            self.legs[0].angle - self.hull.angle
-        ) < -3
+        if fly_mode_flag:
+            fly_check = (self.legs[2].angle - self.hull.angle) > 3 and (
+                self.legs[0].angle - self.hull.angle
+            ) < -3
+        else:
+            fly_check = fly_mode_flag
         # UAS mode
         if fly_check:
             print("fly enable")
@@ -680,8 +683,9 @@ class Group24(gym.Env, EzPickle):
                 * pow(blade_angular_speed_left, 2)
                 * pow(QUANTITY_OUTLINE_ADAPTOR, 3)
             )
-            # print("1blade_angular_speed_left", blade_angular_speed_left)
-            # print("2impulse_magnitude_left", impulse_magnitude_left)
+
+            print("1blade_angular_speed_left", blade_angular_speed_left)
+            print("2impulse_magnitude_left", impulse_magnitude_left)
 
             # impulse pos left
             impulse_pos_left = (self.legs[0].position[0], self.legs[0].position[1])
@@ -699,8 +703,9 @@ class Group24(gym.Env, EzPickle):
                 * pow(blade_angular_speed_right, 2)
                 * pow(QUANTITY_OUTLINE_ADAPTOR, 3)
             )
-            # print("3blade_angular_speed_right", blade_angular_speed_right)
-            # print("4impulse_magnitude_right", impulse_magnitude_right)
+
+            print("3blade_angular_speed_right", blade_angular_speed_right)
+            print("4impulse_magnitude_right", impulse_magnitude_right)
 
             # impulse pos right
             impulse_pos_right = (self.legs[2].position[0], self.legs[2].position[1])
@@ -724,8 +729,16 @@ class Group24(gym.Env, EzPickle):
                 impulse_right[0] * self.throttle_right,
                 impulse_right[1] * self.throttle_right,
             )
-            # print("5scaled_impulse_left", scaled_impulse_left)
-            # print("6scaled_impulse_right", scaled_impulse_right)
+            # scaled_impulse_left = (
+            #     impulse_left[0],
+            #     impulse_left[1]
+            # )
+            # scaled_impulse_right = (
+            #     impulse_right[0],
+            #     impulse_right[1]
+            # )
+            print("5scaled_impulse_left", scaled_impulse_left)
+            print("6scaled_impulse_right", scaled_impulse_right)
 
             # engine activates
             # create particles left
@@ -1078,7 +1091,7 @@ if __name__ == "__main__":
     total_reward = 0
     a = np.array([0.0, 0.0, 0.0, 0.0])  # Initial action
     UGV, CROUCHING, STOP, UAS = 1, 2, 3, 4
-    state = UGV
+    state = UAS
 
     while True:
         # Step through the environment and render each step
@@ -1129,8 +1142,8 @@ if __name__ == "__main__":
             else:
                 if steps % 20 == 0 or terminated or truncated:
                     print("UAS mode")
-                wheel_targ[0] = -1
-                wheel_targ[1] = -1
+                wheel_targ[0] = -0.001
+                wheel_targ[1] = -0.001
             leg_targ[0] = -np.pi
             leg_targ[1] = np.pi
 
