@@ -156,6 +156,7 @@ class Group24(gym.Env, EzPickle):
         wind_power: float = 15.0,
         turbulence_power: float = 0,
         hardcore: bool = True,
+        # max_steps=1600
     ):
         EzPickle.__init__(
             self,
@@ -495,6 +496,7 @@ class Group24(gym.Env, EzPickle):
         options: Optional[dict] = None,
     ):
         super().reset(seed=seed)
+        np.random.seed(seed)
         self._destroy()
 
         # contact listener
