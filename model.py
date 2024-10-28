@@ -21,6 +21,7 @@ class Policy(nn.Module):
             raise NotImplementedError
 
         num_outputs = action_space.shape[0]
+        # A 4-dimensional mean output with a 4-dimensional log standard deviation bias
         self.dist = DiagGaussian(self.base.output_size, num_outputs)
         
     @property
@@ -71,9 +72,12 @@ class NNBase(nn.Module):
         self._recurrent = recurrent
 
         if recurrent:
+            # Gated Recurrent Unit
             self.gru = nn.GRUCell(recurrent_input_size, hidden_size)
+            # Orthogonal Initialization of the weight for input features and hidden states
             nn.init.orthogonal_(self.gru.weight_ih.data)
             nn.init.orthogonal_(self.gru.weight_hh.data)
+            # Initialize the bias for input features and hidden states
             self.gru.bias_ih.data.fill_(0)
             self.gru.bias_hh.data.fill_(0)
 
@@ -128,23 +132,28 @@ class Print(nn.Module):
         return x
 
 class MLPBase(NNBase):
+    # num_inputs: observation shape
     def __init__(self, num_inputs, recurrent=False, hidden_size=64):
         super(MLPBase, self).__init__(recurrent, num_inputs, hidden_size)
 
         if recurrent:
             num_inputs = hidden_size
 
+        # Initialize the weights and biases of the neural network
         init_ = lambda m: init(m,
             init_normc_,
             lambda x: nn.init.constant_(x, 0))
 
+        # neural networks for actor and critic
+        # Generate strategy
         self.actor = nn.Sequential(
             init_(nn.Linear(num_inputs, hidden_size)),
-            nn.Tanh(),
+            nn.Tanh(),  # Hyperbolic tangent activation function
             init_(nn.Linear(hidden_size, hidden_size)),
             nn.Tanh()
         )
 
+        # Evaluating the quality of your strategy
         self.critic = nn.Sequential(
             init_(nn.Linear(num_inputs, hidden_size)),
             nn.Tanh(),
@@ -152,6 +161,7 @@ class MLPBase(NNBase):
             nn.Tanh()
         )
 
+        # State-Action estimates
         self.critic_linear = init_(nn.Linear(hidden_size, 1))
 
         self.train()

@@ -107,7 +107,8 @@ def worker(remote, parent_remote, env_fn_wrapper):
     while True:
         cmd, data = remote.recv()
         if cmd == 'step':
-            ob, reward, done, info = env.step(data)
+            # ob, reward, done, info = env.step(data)
+            ob, reward, done, truncs, info = env.step(data)
             if done:
                 ob = env.reset()
             remote.send((ob, reward, done, info))
@@ -130,7 +131,6 @@ class parallelEnv(VecEnv):
     def __init__(self, env_name,n=4, seed=None,spaces=None):
 
         self.env_fns = [ gym.make(env_name) for _ in range(n) ]
-
         if seed is not None:
             for i,e in enumerate(self.env_fns):
                 # e.seed(i+seed)
@@ -168,7 +168,9 @@ class parallelEnv(VecEnv):
         results = [remote.recv() for remote in self.remotes]
         self.waiting = False
         obs, rews, dones, infos = zip(*results)
+        obs = [o if isinstance(o, np.ndarray) and len(o) == 35 else np.zeros(35, dtype=np.float32) for o in obs]
         return np.stack(obs), np.stack(rews), np.stack(dones), infos
+        # return np.stack(obs), np.stack(rews), np.stack(final_dones), infos
 
     def reset(self):
         for remote in self.remotes:

@@ -47,11 +47,14 @@ class DiagGaussian(nn.Module):
     def __init__(self, num_inputs, num_outputs):
         super(DiagGaussian, self).__init__()
 
+        # Initialize the weights and biases of the neural network
         init_ = lambda m: init(m,
               init_normc_,
               lambda x: nn.init.constant_(x, 0))
 
+        # The mean of the output (a linear layer)
         self.fc_mean = init_(nn.Linear(num_inputs, num_outputs))
+        # A trainable log-standard deviation bias
         self.logstd = AddBias(torch.zeros(num_outputs))
 
     def forward(self, x):

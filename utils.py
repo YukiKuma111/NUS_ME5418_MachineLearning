@@ -27,6 +27,7 @@ def get_vec_normalize(venv):
 class AddBias(nn.Module):
     def __init__(self, bias):
         super(AddBias, self).__init__()
+        # The bias needs to be optimized during training
         self._bias = nn.Parameter(bias.unsqueeze(1))
 
     def forward(self, x):
@@ -44,6 +45,7 @@ def init(module, weight_init, bias_init, gain=1):
     return module
 
 
+# Using normalized normal distribution to initialize weights
 # https://github.com/openai/baselines/blob/master/baselines/common/tf_util.py#L87
 def init_normc_(weight, gain=1):
     weight.normal_(0, 1)
