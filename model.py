@@ -8,6 +8,71 @@ from distributions import DiagGaussian
 from utils import init, init_normc_
 
 
+# class of critic
+class ValueNetwork(nn.Module):
+    def __init__(self, obs_space, hidden_size_gru, hidden_size_MLP):
+        super(ValueNetwork, self).__init__()
+        self.gru_value_1 = nn.GRUCell(input_size=obs_space,hidden_size= hidden_size_gru)
+
+        # gru layer init
+        nn.init.orthogonal_(self.gru_value_1.weight_ih.data)
+        nn.init.orthogonal_(self.gru_value_1.weight_hh.data)
+        self.gru_value_1.bias_ih.data.fill_(0)
+        self.gru_value_1.bias_hh.data.fill_(0)
+
+        # define the init function for the weight and bias init of MLPs
+        self.init_ = lambda m: init(m, init_normc_, lambda x: nn.init.constant_(x, 0))
+
+        # two MLP layer to get action with normalization to improve the training speed
+        self.MLP_1 = self.init_(nn.Linear(hidden_size_gru, hidden_size_MLP))
+        self.MLP_2 = self.init_(nn.Linear(hidden_size_MLP, 1))
+
+        self.train()
+
+    def forward_critic(self, x, hidden_state,masks):
+        # gru layer
+        #output_set_gru,_ = self.gru_value_1(input)
+        #squ_gru,batch_gru,output_gru = output_set_gru.shape
+        #inputs_of_MLP_1 = output_set_gru.view(squ_gru * batch_gru, output_gru)
+
+        batch_size, input_size = x.shape
+        if x.shape[0] == hidden_state.shape[0]:
+            masked_hidden_state = hidden_state*masks
+            hidden_state = self.gru_value_1(x, masked_hidden_state)
+
+        elif x.shape[0] > hidden_state.shape[0]:
+            batch_size_of_hidden_state = hidden_state.shape[0]
+            seq_len = int(batch_size/batch_size_of_hidden_state)
+
+            x = x.view(seq_len, batch_size_of_hidden_state, x.size(1))
+            masks = masks.view(seq_len,batch_size_of_hidden_state,hidden_state.size(1))
+
+            output = []
+
+            for i in range(seq_len):
+                masked_hidden_state = hidden_state*masks[i]
+                out = hidden_state = self.gru_policy_1(x[i], masked_hidden_state)
+                output.append(out)
+
+            x = torch.stack(output, dim=0)
+            x = x.view(seq_len*batch_size_of_hidden_state,-1)
+
+        else:
+            return NotImplementedError
+
+        # MLP layer 1
+        output_of_MLP_1 = torch.tanh(self.MLP_1(x))
+
+        # MLP layer 2
+        value = torch.tanh(self.MLP_2(output_of_MLP_1))
+
+        #value = value.view(squ_gru,batch_gru,-1)
+
+        return value, hidden_state
+
+    def get_value(self, x, hidden_state, masks):
+        value, hidden_state = self.forward_critic(x, hidden_state, masks)
+        return value
 
 # class of actor
 class PolicyNetwork(nn.Module):
@@ -20,6 +85,9 @@ class PolicyNetwork(nn.Module):
 
         self.input_of_Gaussian = hidden_size_MLP
         self.action_space = action_space
+
+        # Embed ValueNetwork as a component instead of inheriting from it
+        self.value_network = ValueNetwork(obs_space, hidden_size_gru, hidden_size_MLP)
 
         # init hidden state
         #self.hidden_state = torch.zeros(batch_size, hidden_size_gru).to(device)
@@ -35,17 +103,17 @@ class PolicyNetwork(nn.Module):
         self.gru_policy_1.bias_hh.data.fill_(0)
 
         # define the init function for the weight and bias init of MLPs
-        init_ = lambda m: init(m, init_normc_, lambda x: nn.init.constant_(x, 0))
+        self.init_ = lambda m: init(m, init_normc_, lambda x: nn.init.constant_(x, 0))
 
         # two MLP layer to get action with normalization to improve the training speed
-        self.MLP_1 = init_(nn.Linear(hidden_size_gru, hidden_size_MLP))
-        self.MLP_2 = init_(nn.Linear(hidden_size_MLP, hidden_size_MLP))
+        self.MLP_1 = self.init_(nn.Linear(hidden_size_gru, hidden_size_MLP))
+        self.MLP_2 = self.init_(nn.Linear(hidden_size_MLP, hidden_size_MLP))
 
         self.train()
         # init the action probability distribution calculator
         #self.dist = DiagGaussian(hidden_size_gru, action_space)
 
-    def forward(self, x, hidden_state,masks):
+    def forward_actor(self, x, hidden_state,masks):
         # input = (batch_size,input_size)
         # hidden_state = (batch_size,hidden_size_gru)
         batch_size,input_size = x.shape
@@ -97,110 +165,52 @@ class PolicyNetwork(nn.Module):
     # the input - action is the output of the network, the probability distribution of the four actions
     def act(self, x, hidden_state, masks, deterministic=False):
 
-        action_feature,hidden_state = myactor.forward(x, hidden_state, masks)
-        value, hidden_state = mycritic.forward(x, hidden_state, masks)
+        action_feature,hidden_state = self.forward_actor(x, hidden_state, masks)
+        value, hidden_state = self.value_network.forward_critic(x, hidden_state, masks)
+
+        print(f'the output of act in the network {action_feature}')
 
         self.dist = DiagGaussian(self.input_of_Gaussian,self.action_space)
         dist = self.dist(action_feature)
-
-        # dist = Categorical(action_feature)
 
         if deterministic:
             sample_action = dist.mode()
         else:
             sample_action = dist.sample()
+
+        print(f'\nthe output of sample action in the network {sample_action}')
+
         # return the index of the action which should be taken
-        action_log_prob = dist.log_prob(sample_action)
+        action_log_probs = dist.log_probs(sample_action)
+        print(f'\nthe output of action_log_prob in the network {action_log_probs}')
         # calculate the log probability of hte sample action for the ppo calculation
-        # 打印调试信息
+        # check the gradient tracking
         print(f"Action feature requires grad: {action_feature.requires_grad}")
         print(f"Sample action requires grad: {sample_action.requires_grad}")
 
-        return value, sample_action, action_log_prob, hidden_state
+        return value, sample_action, action_log_probs, hidden_state
 
     # used to
-    # def evaluate_action(self, x, hidden_state, masks, sample_action):
-    #
-    #     action_feature,hidden_state = myactor.forward(x, hidden_state, masks)
-    #     value,hidden_state = mycritic.forward(x, hidden_state, masks)
-    #
-    #     dist = Categorical(action_feature)
-    #
-    #     action_log_probs = dist.log_prob(sample_action)
-    #     # calculate the log probability of hte sample action for the ppo calculation
-    #
-    #     dist_entropy = dist.entropy().mean()
-    #     # the entropy of the four actions ,for the ppo calculation
-    #
-    #     return value, action_log_probs, dist_entropy, hidden_state
+    def evaluate_actions(self, x, hidden_state, masks,deterministic=False):
 
-# class of critic
-class ValueNetwork(nn.Module):
-    def __init__(self, obs_space, hidden_size_gru, hidden_size_MLP):
-        super(ValueNetwork, self).__init__()
-        self.gru_value_1 = nn.GRUCell(input_size=obs_space,hidden_size= hidden_size_gru)
+        action_feature, hidden_state = self.forward_actor(x, hidden_state, masks)
+        value, hidden_state = self.value_network.forward_critic(x, hidden_state, masks)
 
-        # gru layer init
-        nn.init.orthogonal_(self.gru_value_1.weight_ih.data)
-        nn.init.orthogonal_(self.gru_value_1.weight_hh.data)
-        self.gru_value_1.bias_ih.data.fill_(0)
-        self.gru_value_1.bias_hh.data.fill_(0)
+        self.dist = DiagGaussian(self.input_of_Gaussian, self.action_space)
+        dist = self.dist(action_feature)
 
-        # define the init function for the weight and bias init of MLPs
-        init_ = lambda m: init(m, init_normc_, lambda x: nn.init.constant_(x, 0))
-
-        # two MLP layer to get action with normalization to improve the training speed
-        self.MLP_1 = init_(nn.Linear(hidden_size_gru, hidden_size_MLP))
-        self.MLP_2 = init_(nn.Linear(hidden_size_MLP, 1))
-
-        self.train()
-
-    def forward(self, x, hidden_state,masks):
-        # gru layer
-        #output_set_gru,_ = self.gru_value_1(input)
-        #squ_gru,batch_gru,output_gru = output_set_gru.shape
-        #inputs_of_MLP_1 = output_set_gru.view(squ_gru * batch_gru, output_gru)
-
-        batch_size, input_size = x.shape
-        if x.shape[0] == hidden_state.shape[0]:
-            masked_hidden_state = hidden_state*masks
-            hidden_state = self.gru_value_1(x, masked_hidden_state)
-
-        elif x.shape[0] > hidden_state.shape[0]:
-            batch_size_of_hidden_state = hidden_state.shape[0]
-            seq_len = int(batch_size/batch_size_of_hidden_state)
-
-            x = x.view(seq_len, batch_size_of_hidden_state, x.size(1))
-            masks = masks.view(seq_len,batch_size_of_hidden_state,hidden_state.size(1))
-
-            output = []
-
-            for i in range(seq_len):
-                masked_hidden_state = hidden_state*masks[i]
-                out = hidden_state = self.gru_policy_1(x[i], masked_hidden_state)
-                output.append(out)
-
-            x = torch.stack(output, dim=0)
-            x = x.view(seq_len*batch_size_of_hidden_state,-1)
-
+        if deterministic:
+            sample_action = dist.mode()
         else:
-            return NotImplementedError
+            sample_action = dist.sample()
 
-        # MLP layer 1
-        output_of_MLP_1 = torch.tanh(self.MLP_1(x))
+        action_log_probs = dist.log_probs(sample_action)
+        # calculate the log probability of hte sample action for the ppo calculation
 
-        # MLP layer 2
-        value = torch.tanh(self.MLP_2(output_of_MLP_1))
+        dist_entropy = dist.entropy().mean()
+        # the entropy of the four actions ,for the ppo calculation
 
-        #value = value.view(squ_gru,batch_gru,-1)
-
-        return value, hidden_state
-
-    def get_value(self, x, hidden_state, masks):
-        value, hidden_state = self.forward(x, hidden_state, masks)
-        return value
-
-
+        return value, action_log_probs, dist_entropy, hidden_state
 
 if __name__ == '__main__':
 
@@ -221,7 +231,7 @@ if __name__ == '__main__':
     # network params
     obs_space = 35
     hidden_size_gru = 35
-    hidden_size_MLP =35
+    hidden_size_MLP = 64
     action_space = 4
     num_layers = 1
 

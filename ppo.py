@@ -52,9 +52,9 @@ class ppo_agent():
                     adv_targ = sample
 
                 # Reshape to do in a single forward pass for all steps
-                # values, action_log_probs, dist_entropy, states = self.actor.evaluate_actions(
-                #     obs_batch, recurrent_hidden_states_batch,
-                #     masks_batch, actions_batch)
+                values, action_log_probs, dist_entropy, states = self.actor.evaluate_actions(
+                    obs_batch, recurrent_hidden_states_batch,
+                    masks_batch)
 
                 # the ratio between action probability distribution and the previous one
                 ratio = torch.exp(action_log_probs - old_action_log_probs_batch)
@@ -80,3 +80,29 @@ class ppo_agent():
                 # gradient update
                 self.actor_optimizer.step()
                 self.critic_optimizer.step()
+
+# if __name__ == '__main__':
+#     # device definition
+#     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+#     obs_space = 35
+#     hidden_size_gru = 35
+#     hidden_size_MLP = 35
+#     action_space = 4
+#     num_layers = 1
+#
+#     epoch = 5
+#
+#     # ppo init
+#     ppo_epoch = 16
+#     num_mini_batch = 4
+#     lr = 1e-3
+#     max_grad_norm = None
+#
+#     # actor and critic setup
+#     myactor = actor(obs_space, hidden_size_gru, hidden_size_MLP, action_space).to(device)
+#     mycritic = critic(obs_space, hidden_size_gru, hidden_size_MLP).to(device)
+#
+#     ppo_agent = ppo_agent(actor=myactor, critic=mycritic,ppo_epoch=ppo_epoch,num_mini_batch=num_mini_batch,lr=lr)
+#     for i in range(epoch):
+
+
