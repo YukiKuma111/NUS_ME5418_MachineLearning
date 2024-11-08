@@ -31,19 +31,19 @@ if TYPE_CHECKING:
 FPS = 50
 SCALE = 30.0  # affects how fast-paced the game is, forces should be adjusted as well
 
-MOTORS_TORQUE = 600
-SPEED_HIP = 10
-SPEED_KNEE = 10
-LIDAR_RANGE = 160 / SCALE
+MOTORS_TORQUE = 900
+SPEED_HIP = 5
+SPEED_WHEEL = 8
+LIDAR_RANGE = 320 / SCALE
 
 INITIAL_RANDOM = 5
 
 # physical parameters for the robot
-HALF_HEIGHT_HULL = 10
+HALF_HEIGHT_HULL = 15
 HALF_WIDTH_HULL = 40
 HALF_HEIGHT_LANDER = 6
 HALF_WIDTH_LANDER = 20
-WHEEL_RADIUS = 34 / 2
+WHEEL_RADIUS = 40 / 2
 
 HULL_POLY = [
     (-HALF_WIDTH_HULL, HALF_HEIGHT_HULL),
@@ -57,8 +57,8 @@ LANDER_POLY = [
     (HALF_WIDTH_LANDER, -HALF_HEIGHT_LANDER),
     (-HALF_WIDTH_LANDER, -HALF_HEIGHT_LANDER),
 ]
-LEG_DOWN = -8 / SCALE
-LEG_W, LEG_H = 8 / SCALE, 40 / SCALE
+LEG_DOWN = -12 / SCALE
+LEG_W, LEG_H = 12 / SCALE, 35 / SCALE
 
 VIEWPORT_W = 600
 VIEWPORT_H = 400
@@ -68,18 +68,18 @@ TERRAIN_LENGTH = 200  # in steps
 TERRAIN_HEIGHT = VIEWPORT_H / SCALE / 4
 TERRAIN_GRASS = 25  # low long are grass spots, in steps
 TERRAIN_STARTPAD = 20  # in steps
-FRICTION = 2.5
+FRICTION = 3.0
 
 # engine physical parameters
 LITATION_COEFFICIENT = 243 / 8
 QUANTITY_OUTLINE_ADAPTOR = 0.1  # cm -> m
-ENGINE_POWER_FACTOR = 53526
+ENGINE_POWER_FACTOR = 53526 / 10
 THROTTLE_INCREASE_RATE = 0.01
 RPS = 2000
 
 HULL_FD = fixtureDef(
     shape=polygonShape(vertices=[(x / SCALE, y / SCALE) for x, y in HULL_POLY]),
-    density=5.0,
+    density=6.5,
     friction=0.1,
     categoryBits=0x0020,
     maskBits=0x001,  # collide only with ground
@@ -88,7 +88,7 @@ HULL_FD = fixtureDef(
 
 LEG_FD = fixtureDef(
     shape=polygonShape(box=(LEG_W / 2, LEG_H / 2)),
-    density=1.0,
+    density=2.0,
     restitution=0.0,
     categoryBits=0x0020,
     maskBits=0x001,
@@ -96,8 +96,8 @@ LEG_FD = fixtureDef(
 
 WHEEL_FD = fixtureDef(
     shape=circleShape(radius=WHEEL_RADIUS / SCALE, pos=(0, WHEEL_RADIUS / SCALE)),
-    density=1.0,
-    restitution=0.0,
+    density=2.5,
+    restitution=0.05,
     categoryBits=0x0020,
     maskBits=0x001,
 )
@@ -105,7 +105,6 @@ WHEEL_FD = fixtureDef(
 LANDER_FD = fixtureDef(
     shape=polygonShape(vertices=[(x / SCALE, y / SCALE) for x, y in LANDER_POLY]),
     density=1.0,
-    friction=0.1,
     categoryBits=0x0020,
     maskBits=0x001,  # collide only with ground
     restitution=0.0,
@@ -124,6 +123,11 @@ class ContactDetector(contactListener):
             or self.env.hull == contact.fixtureB.body
         ):
             self.env.game_over = True
+        if (
+            self.env.lander[0] == contact.fixtureA.body
+            or self.env.lander[0] == contact.fixtureB.body
+        ):
+            self.env.game_over = False  # Normally False
         for leg in [self.env.legs[1], self.env.legs[3]]:
             if leg in [contact.fixtureA.body, contact.fixtureB.body]:
                 leg.ground_contact = True
@@ -156,7 +160,6 @@ class Group24(gym.Env, EzPickle):
         wind_power: float = 15.0,
         turbulence_power: float = 0,
         hardcore: bool = True,
-        # max_steps=1600
     ):
         EzPickle.__init__(
             self,
@@ -296,10 +299,6 @@ class Group24(gym.Env, EzPickle):
         self.screen: Optional[pygame.Surface] = None
         self.clock = None
 
-        self.render_mode = render_mode
-        self.screen: Optional[pygame.Surface] = None
-        self.clock = None
-
     def _destroy(self):
         if not self.terrain:
             return
@@ -323,7 +322,9 @@ class Group24(gym.Env, EzPickle):
 
     # terrain generation
     def _generate_terrain(self, hardcore):
-        GRASS, TOWER, STAIRS, SLOPE, HOLE, _STATES_ = range(6)
+        # GRASS, TOWER, STAIRS, SLOPE, HOLE, _STATES_ = range(6)
+        TOWER, STAIRS = -1, -1
+        GRASS, SLOPE, HOLE, _STATES_ = range(4)
         state = GRASS
         velocity = 0.0
         y = TERRAIN_HEIGHT
@@ -368,7 +369,7 @@ class Group24(gym.Env, EzPickle):
 
             elif state == STAIRS and oneshot:
                 stair_height = +2 if self.np_random.random() > 0.5 else -2
-                stair_width = self.np_random.integers(4, 5)
+                stair_width = self.np_random.integers(9, 10)
                 stair_steps = self.np_random.integers(2, 4)
                 original_y = y
                 for s in range(stair_steps):
@@ -397,14 +398,19 @@ class Group24(gym.Env, EzPickle):
                 counter = stair_steps * stair_width
 
             elif state == STAIRS and not oneshot:
-                s = stair_steps * stair_width - counter - stair_height
-                n = s / stair_width
-                y = original_y + (n * stair_height) * TERRAIN_STEP
+                if stair_height < 0:
+                    s = stair_steps * stair_width - counter - stair_height
+                    n = (s - 1) / stair_width
+                    y = original_y + (n * stair_height) * TERRAIN_STEP
+                else:
+                    s = stair_steps * stair_width - counter - stair_height
+                    n = (s - stair_height * 4) / stair_width
+                    y = original_y + (n * stair_height) * TERRAIN_STEP
 
             elif state == SLOPE and oneshot:
                 robot_width = (HALF_WIDTH_HULL + WHEEL_RADIUS) * 2 / SCALE + LEG_H * 2
-                slope_width = self.np_random.integers(robot_width, robot_width * 2.5)
-                slope_angle = self.np_random.integers(10, 35)
+                slope_width = self.np_random.integers(robot_width * 2, robot_width * 3)
+                slope_angle = self.np_random.integers(10, 30)
                 slope_height = slope_width * np.tan(np.deg2rad(slope_angle))
                 poly = [
                     (x, y),
@@ -425,9 +431,12 @@ class Group24(gym.Env, EzPickle):
                 robot_width = (HALF_WIDTH_HULL + WHEEL_RADIUS) * 2 / SCALE + LEG_H * 2
                 robot_height = (HALF_HEIGHT_HULL * 2 + WHEEL_RADIUS) / SCALE + LEG_H
                 counter = self.np_random.integers(robot_width, 3 * robot_width)
-                hole_height = self.np_random.integers(
-                    (VIEWPORT_H / SCALE - y) - robot_height,
-                    (VIEWPORT_H / SCALE - y) - robot_height / 3,
+                hole_height = round(
+                    self.np_random.uniform(
+                        (VIEWPORT_H / SCALE - y) - robot_height * 1,
+                        (VIEWPORT_H / SCALE - y) - robot_height / 1.2,
+                    ),
+                    2,
                 )
                 poly = [
                     (x, VIEWPORT_H / SCALE),
@@ -496,7 +505,7 @@ class Group24(gym.Env, EzPickle):
         options: Optional[dict] = None,
     ):
         super().reset(seed=seed)
-        np.random.seed(seed)
+        # np.random.seed(seed)
         self._destroy()
 
         # contact listener
@@ -525,10 +534,6 @@ class Group24(gym.Env, EzPickle):
         )
         self.hull.color1 = (127, 51, 229)
         self.hull.color2 = (76, 76, 127)
-        # apply a random initial force to the hull in the physics simulation
-        # self.hull.ApplyForceToCenter(
-        #     (self.np_random.uniform(0, 0), 0), True
-        # )
 
         # lander creation
         self.lander: List[Box2D.b2Body] = []
@@ -649,14 +654,17 @@ class Group24(gym.Env, EzPickle):
         while self.particles and (all or self.particles[0].ttl < 0):
             self.world.DestroyBody(self.particles.pop(0))
 
-    def step(self, action: np.ndarray):
+    def step(self, action: np.ndarray, fly_mode_flag=False):
         assert self.hull is not None
-        fly_check = (self.legs[2].angle - self.hull.angle) > 3 and (
-            self.legs[0].angle - self.hull.angle
-        ) < -3
+        if fly_mode_flag:
+            fly_check = (self.legs[2].angle - self.hull.angle) > 3 and (
+                self.legs[0].angle - self.hull.angle
+            ) < -3
+        else:
+            fly_check = fly_mode_flag
+
         # UAS mode
         if fly_check:
-            print("fly enable")
             # Rear leg control
             self.joints[0].motorSpeed = float(SPEED_HIP * np.clip(action[0], -1, -1))
             self.joints[0].maxMotorTorque = float(
@@ -676,14 +684,12 @@ class Group24(gym.Env, EzPickle):
             p_power_right = (np.clip(action[3], 0, 1) + 1.0) * 0.5
 
             # left wheel's engine
-            blade_angular_speed_left = -float(SPEED_KNEE * np.clip(action[1], -1, 0))
+            blade_angular_speed_left = -float(SPEED_WHEEL * np.clip(action[1], -1, 0))
             impulse_magnitude_left = (
                 LITATION_COEFFICIENT
                 * pow(blade_angular_speed_left, 2)
                 * pow(QUANTITY_OUTLINE_ADAPTOR, 3)
             )
-            # print("1blade_angular_speed_left", blade_angular_speed_left)
-            # print("2impulse_magnitude_left", impulse_magnitude_left)
 
             # impulse pos left
             impulse_pos_left = (self.legs[0].position[0], self.legs[0].position[1])
@@ -695,14 +701,12 @@ class Group24(gym.Env, EzPickle):
             )
 
             # right wheel's engine
-            blade_angular_speed_right = -float(SPEED_KNEE * np.clip(action[3], -1, 0))
+            blade_angular_speed_right = -float(SPEED_WHEEL * np.clip(action[3], -1, 0))
             impulse_magnitude_right = (
                 LITATION_COEFFICIENT
                 * pow(blade_angular_speed_right, 2)
                 * pow(QUANTITY_OUTLINE_ADAPTOR, 3)
             )
-            # print("3blade_angular_speed_right", blade_angular_speed_right)
-            # print("4impulse_magnitude_right", impulse_magnitude_right)
 
             # impulse pos right
             impulse_pos_right = (self.legs[2].position[0], self.legs[2].position[1])
@@ -726,8 +730,6 @@ class Group24(gym.Env, EzPickle):
                 impulse_right[0] * self.throttle_right,
                 impulse_right[1] * self.throttle_right,
             )
-            # print("5scaled_impulse_left", scaled_impulse_left)
-            # print("6scaled_impulse_right", scaled_impulse_right)
 
             # engine activates
             # create particles left
@@ -772,7 +774,7 @@ class Group24(gym.Env, EzPickle):
         else:
             rear_leg_speed = self.joints[0].speed / SPEED_HIP
             front_leg_speed = self.joints[2].speed / SPEED_HIP
-            leg_damping = 0.15
+            leg_damping = 0.0
 
             # Rear leg control
             self.joints[0].motorSpeed = float(
@@ -782,7 +784,7 @@ class Group24(gym.Env, EzPickle):
                 MOTORS_TORQUE * np.clip(np.abs(action[0]), 0, 1)
             )
             # Rear wheel control
-            self.joints[1].motorSpeed = float(SPEED_KNEE * np.sign(action[1]))
+            self.joints[1].motorSpeed = float(SPEED_WHEEL * np.sign(action[1]))
             self.joints[1].maxMotorTorque = float(
                 MOTORS_TORQUE * np.clip(np.abs(action[1]), 0, 1)
             )
@@ -794,7 +796,7 @@ class Group24(gym.Env, EzPickle):
                 MOTORS_TORQUE * np.clip(np.abs(action[0]), 0, 1)
             )
             # Front wheel control
-            self.joints[3].motorSpeed = float(SPEED_KNEE * np.sign(action[3]))
+            self.joints[3].motorSpeed = float(SPEED_WHEEL * np.sign(action[3]))
             self.joints[3].maxMotorTorque = float(
                 MOTORS_TORQUE * np.clip(np.abs(action[2]), 0, 1)
             )
@@ -822,11 +824,11 @@ class Group24(gym.Env, EzPickle):
             0.3 * pos.y * (VIEWPORT_H / SCALE) / FPS,
             self.joints[0].angle,
             self.joints[0].speed / SPEED_HIP,
-            self.joints[1].speed / SPEED_KNEE,
+            self.joints[1].speed / SPEED_WHEEL,
             1.0 if self.legs[1].ground_contact else 0.0,
             self.joints[2].angle,
             self.joints[2].speed / SPEED_HIP,
-            self.joints[3].speed / SPEED_KNEE,
+            self.joints[3].speed / SPEED_WHEEL,
             1.0 if self.legs[3].ground_contact else 0.0,
             1.0 if self.lander[0].ground_contact else 0.0,
         ]
@@ -835,7 +837,8 @@ class Group24(gym.Env, EzPickle):
 
         self.scroll = pos.x - VIEWPORT_W / SCALE / 5
 
-        shaping = 130 * pos[0] / SCALE  # moving forward is a way to receive reward
+        # moving forward is a way to receive reward 600 * 82 / 30 = 1640
+        shaping = 600 * pos[0] / SCALE
         shaping -= 5.0 * abs(
             state[0]
         )  # keep head straight, other than that and falling, any behavior is unpunished
@@ -846,7 +849,9 @@ class Group24(gym.Env, EzPickle):
         self.prev_shaping = shaping
 
         for a in action:
-            reward -= 0.00035 * MOTORS_TORQUE * np.clip(np.abs(a), 0, 1)
+            reward -= (
+                0.00035 * MOTORS_TORQUE * np.clip(np.abs(a), 0, 1)
+            )  # 0.00035 * 900 * [0, 1] = [0, 0.315]
             if (
                 self.legs[3].ApplyLinearImpulse == True
                 and self.legs[1].ApplyLinearImpulse == True
@@ -869,7 +874,32 @@ class Group24(gym.Env, EzPickle):
             reward = -100
             terminated = True
         if pos[0] > (TERRAIN_LENGTH - TERRAIN_GRASS) * TERRAIN_STEP:
+            reward += 300
             terminated = True
+
+        if not fly_check:
+            front_leg_hull_angle = self.legs[2].angle - self.hull.angle
+            back_leg_hull_angle = self.legs[0].angle - self.hull.angle
+
+            if self.lander[0].ground_contact == 1:
+                reward -= 10
+            else:
+                if (self.legs[1].ground_contact == 1) and (
+                    self.legs[3].ground_contact == 1
+                ):
+                    reward += 0.1
+                elif (self.legs[1].ground_contact == 1) or (
+                    self.legs[3].ground_contact == 1
+                ):
+                    reward += 0.05
+                else:
+                    reward = reward
+            if front_leg_hull_angle > 1.7 and back_leg_hull_angle < -1.7:
+                reward -= 10
+            elif front_leg_hull_angle > 1.7:
+                reward -= 5 * (front_leg_hull_angle - 1.7)
+            elif back_leg_hull_angle < -1.7:
+                reward -= 5 * (-1.7 - back_leg_hull_angle)
 
         if self.render_mode == "human":
             self.render()
@@ -1109,13 +1139,17 @@ if __name__ == "__main__":
         wheel_todo = [0.0, 0.0]
 
         if state == UGV:
-            wheel_targ[0] = -1.0
-            wheel_targ[1] = -1.0
+            wheel_targ[0] = -0.8
+            wheel_targ[1] = -0.8
             leg_targ[0] = np.pi / 4
             leg_targ[1] = -np.pi / 4
         if state == CROUCHING:
-            wheel_targ[0] = -0.01
-            wheel_targ[1] = -0.01
+            if steps < 200:
+                wheel_targ[0] = -0.01
+                wheel_targ[1] = -0.01
+            else:
+                wheel_targ[0] = -0.4
+                wheel_targ[1] = -0.4
             leg_targ[0] = -np.pi / 4
             leg_targ[1] = np.pi / 4
         if state == STOP:
@@ -1131,8 +1165,8 @@ if __name__ == "__main__":
             else:
                 if steps % 20 == 0 or terminated or truncated:
                     print("UAS mode")
-                wheel_targ[0] = -1
-                wheel_targ[1] = -1
+                wheel_targ[0] = -0.001
+                wheel_targ[1] = -0.001
             leg_targ[0] = -np.pi
             leg_targ[1] = np.pi
 
