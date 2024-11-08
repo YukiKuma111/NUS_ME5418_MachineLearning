@@ -67,7 +67,7 @@ The neural network training process in Jupyter Notebook can be customized with t
 These parameters can be adjusted to fine-tune the model’s learning process. Additionally:
 
 - __num_updates__ (default = 1000): This controls the number of training updates (iterations). Increasing this value can allow for longer training, potentially improving performance but also increasing computation time.
-- __np.mean (scores_deque)__ (default > 1000): This specifies the stopping criterion for training. Training will end if the average score over recent episodes exceeds 800. This threshold can be adjusted depending on the desired performance level.
+- __np.mean (scores_deque)__ (default > 1100): This specifies the stopping criterion for training. Training will end if the average score over recent episodes exceeds 800. This threshold can be adjusted depending on the desired performance level.
 
 ### Step 4: Visualizing Training with TensorBoard
 
