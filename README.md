@@ -33,7 +33,55 @@ The main libraries and versions used in this project are as follows:
 - __Pygame 2.6.1__
 - __Box2D__
 
-## Running the Project
+## Project Declare
+Our network was defined in the model_custom.py file and our learning agent is the ppo_custom.py. 
+The M4_PPO_custom_train.ipynb is the jupyter notebook used to train our network, but after we trained our network by the M4_PP0_custom_train.ipynb file
+```
+# Start Jupyter Notebook
+jupyter notebook M4_PPO_custom_train.ipynb
+```
+We found the rewards of our network cannot converge as the following figure shows, so we changed our network and ppo agent according to a [BipedalWalker Project](https://github.com/Rafael1s/Deep-Reinforcement-Learning-Algorithms/tree/master/BipedalWalker-PPO-VectorizedEnv) 
+The new network is the model_ref.py and new ppo agent is the ppo_ref.py
+![rewards changes of our network](./dir_save/custom_training_result/Average%20Score_20241122_155812.png)
+__The "Running custom Project" section is to run our original project, 
+and the "Running the Reference Project" section is to run the project changed 
+according to the [BipedalWalker Project](https://github.com/Rafael1s/Deep-Reinforcement-Learning-Algorithms/tree/master/BipedalWalker-PPO-VectorizedEnv)__ 
+
+
+## Running the Custom Project
+### Step 1: Test M4 Environment
+
+```
+# Test if the environment is set up correctly
+python env/group24_env.py
+```
+
+You can switch M4's movement mode by modifying the `state` defined in line 1113 of the [`env/group24_env.py`](./env/group24_env.py) file.
+
+If you wish to remove obstacles, change `hardcore: bool = True` to __False__ in line 149 of the [`env/group24_env.py`](./env/group24_env.py) file.
+
+### Step 2: Run the Project
+
+The project runs through the M4_PPO_ref_train.ipynb file which will train the network:
+
+```
+# Start Jupyter Notebook
+jupyter notebook M4_PPO_custom_train.ipynb
+```
+
+In the notebook, you can execute the code step-by-step to monitor the training process and model performance.
+
+### Step 3: Visualizing Training with TensorBoard
+
+A bash script, [`view_tensorboard.sh`](./view_tensorboard.sh), is included for real-time tracking of training progress. To launch TensorBoard for monitoring the training metrics, run:
+
+```
+bash view_tensorboard.sh
+```
+
+This visualization tool provides insights into key metrics: Average Total Reward and Average Score, helping users assess and optimize the training process effectively.
+
+## Running the Reference Project
 
 ### Step 1: Test M4 Environment
 
@@ -48,11 +96,11 @@ If you wish to remove obstacles, change `hardcore: bool = True` to __False__ in 
 
 ### Step 2: Run the Project
 
-The project runs through the M4_PPO.ipynb file:
+The project runs through the M4_PPO_ref_train.ipynb file which will train the network:
 
 ```
 # Start Jupyter Notebook
-jupyter notebook M4_PPO.ipynb
+jupyter notebook M4_PPO_ref_train.ipynb
 ```
 
 In the notebook, you can execute the code step-by-step to monitor the training process and model performance.
@@ -91,5 +139,10 @@ The main reward function of the project are as follows:
 - Penalty for Lander Ground Contact: M4 is penalized heavily if its lander touches the ground.
 
 By optimizing these rewards and penalties, M4 can eventually navigate complex terrains with SLOPE and HOLE, as shown in the gif below.
+Or if you want to run our train result please run the M4_PPO_test.ipynb file:
+```
+# Start Jupyter Notebook
+jupyter notebook M4_PPO_ref_test.ipynb
+```
 
 ![Watch the video](./M4_PPO_vis.gif)
