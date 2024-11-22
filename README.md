@@ -139,10 +139,6 @@ The main reward function of the project are as follows:
 - Penalty for Lander Ground Contact: M4 is penalized heavily if its lander touches the ground.
 
 By optimizing these rewards and penalties, M4 can eventually navigate complex terrains with SLOPE and HOLE, as shown in the gif below.
-Or if you want to run our train result please run the M4_PPO_test.ipynb file:
-```
-# Start Jupyter Notebook
-jupyter notebook M4_PPO_ref_test.ipynb
-```
+
 
 ![Watch the video](./M4_PPO_vis.gif)
